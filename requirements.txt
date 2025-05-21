@@ -1,4 +1,4 @@
-umpy==2.2.4
+numpy==2.2.4
 pandas==2.2.3
 plotly==5.24.1
 python-dotenv==1.1.0
