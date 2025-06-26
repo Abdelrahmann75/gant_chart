@@ -72,7 +72,7 @@ def render_pdf_pages(filename: str, dpi: int = 82) -> list[str]:
     """
     try:
         # Construct the full path to the PDF
-        pdf_path = Path(__file__).parent.parent / "wwwroot" / "my_pages" / filename
+        pdf_path = Path(__file__).parent.parent / "my_pages" / filename
         if not pdf_path.exists():
             st.error(f"PDF file not found at {pdf_path}")
             return []
