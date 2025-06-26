@@ -1,15 +1,16 @@
 from dotenv import load_dotenv
-load_dotenv()  # Load environment variables for the entire app
+load_dotenv()
+
 import streamlit as st
 from streamlit import session_state as state
+from pathlib import Path
 
 # Set the page layout and title
-st.set_page_config(layout="wide", page_title="DFMS", page_icon="🔒")
+st.set_page_config(layout="wide", page_title="IPR Analysis Suite", page_icon="🔒")
 
-# Custom CSS for styling with updated colors and sizes
+# Custom CSS for styling
 st.markdown("""
     <style>
-        /* Modern login box with glassmorphism (reduced size) */
         .login-box {
             max-width: 350px;
             padding: 2rem;
@@ -27,7 +28,6 @@ st.markdown("""
             font-weight: 500 !important;
             font-size: 1.1rem !important;
         }
-        /* Modern cards */
         .card {
             background: white !important;
             padding: 1.5rem;
@@ -38,7 +38,6 @@ st.markdown("""
         .card:hover {
             transform: translateY(-5px);
         }
-        /* Filter section styling: very light blue background */
         .filter-section {
             background-color: #eaf2f8;
             padding: 1rem;
@@ -48,9 +47,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# User credentials (For demo purposes - In production, use secure authentication)
+# User credentials
 USERS = {
-    "admin": "ipr123",
+    "test": "ipr123",
     "user": "password123"
 }
 
@@ -58,13 +57,12 @@ def authenticate(username, password):
     return USERS.get(username) == password
 
 def login_page():
-    st.title("🔒 ")
-    
+    st.title("🔒 IPR Analysis Suite")
+    st.markdown("<h3 style='text-align: center; color: var(--text);'>Welcome! Please Login</h3>", unsafe_allow_html=True)
     
     with st.container():
         col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
-            # Wrap the form inside a div with the login-box class for glassmorphism styling
             st.markdown("<div class='login-box'>", unsafe_allow_html=True)
             with st.form("login_form"):
                 username = st.text_input("👤 Username", placeholder="Enter your username")
@@ -80,7 +78,6 @@ def login_page():
                         st.error("Invalid username or password")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-                            # Cache clear button with a confirmation
                 st.markdown("---")
                 if st.form_submit_button("Clear Cache"):
                     st.cache_data.clear()
@@ -92,26 +89,24 @@ if not getattr(state, 'authenticated', False):
     login_page()
 else:
     def main_app():
-        # Add logout button in sidebar
         with st.sidebar:
-            
-            for i in range(18):
-                st.write(" ")
+            st.write(f"Welcome, {state.username}!")
             if st.button("🚪 Logout"):
                 state.authenticated = False
                 st.rerun()
 
-        # Common base paths for pages
-        base_path = "Y:/IPR_App/update/my_pages/"
-        llm_path = "Y:/IPR_App/update/my_pages/LLM_SQL/"  # Ensure trailing slash
+        # Paths relative to this script
+        base_path = Path(__file__).parent / "my_pages"
+        llm_path = Path(__file__).parent / "LLM_SQL"
 
-        # Define page details in a list
+       
+
         pages = [
-            {"file": "1PetroSilah_Update.py", "title": "PetroSilah Update", "icon": "🔄", "section": "Updating Database"},
+            
             {"file": "metrics.py", "title": "Production Metrics", "icon": "📊", "section": "Detailed Analysis"},
             {"file": "prod_differ.py", "title": "Production Differ", "icon": "📊", "section": "Detailed Analysis"},
             {"file": "2IPR_analysis.py", "title": "Production plots", "icon": "📉", "section": "Detailed Analysis"},
-            {"file": "eho_update.py", "title": "Alamein Update", "icon": "🔄", "section": "Updating Database"},
+       
             {"file": "dca.py", "title": "Decline Curve Analysis", "icon": "📉", "section": "Detailed Analysis"},
             {"file": "cases_trial.py", "title": "Production Profile", "icon": "📉", "section": "Detailed Analysis"},
             {"file": "bi_weekly.py", "title": "Bi Weekly Report", "icon": "📊", "section": "Detailed Analysis"},
@@ -119,27 +114,25 @@ else:
             {"file": "app.py", "title": "Chat Bot", "icon": "📊", "section": "AI Assistant"}
         ]
 
-        # Group pages into sections dynamically
-        sections = {"AI Assistant":[],"Updating Database": [], "Detailed Analysis": [],"Well Data":[]}
+        # Group pages into sections
+        sections = {"AI Assistant": [], "Updating Database": [], "Detailed Analysis": []}
         for page in pages:
-            # Use llm_path for the 'app.py' page; otherwise use base_path
             if page["file"] == "app.py":
-                file_path = llm_path + page["file"]
+                file_path = llm_path / page["file"]
             else:
-                file_path = base_path + page["file"]
+                file_path = base_path / page["file"]
 
-            # Create the page object using the resolved file path
-            page_obj = st.Page(file_path, title=page["title"], icon=page["icon"])
+            page_obj = st.Page(str(file_path), title=page["title"], icon=page["icon"])
             sections[page["section"]].append(page_obj)
 
-        # Navigation setup with sections
+        # Navigation
         pg = st.navigation(sections)
 
-        # Add logo and image (if available, adjust paths as necessary)
-        st.logo('IPR-275.png')
-        st.image('IPR-275.png')
+        # Logo and image
+        st.logo( "IPR-275.png")
+        st.image("IPR-275.png")
 
-        # Run navigation
+        # Run selected page
         pg.run()
 
-    main_app() 
+    main_app()
