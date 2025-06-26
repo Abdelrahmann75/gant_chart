@@ -12,6 +12,7 @@ from pathlib import Path
 from streamlit_plotly_events import plotly_events
 from streamlit.components.v1 import html
 import plotly.graph_objects as go
+import urllib.parse
 
 # --- Set page layout and title ---
 
@@ -100,36 +101,31 @@ def render_pdf_pages(path: str, dpi: int = 82) -> list[str]:
         return []
 
 
-# --- Helper to display PDF inline in Streamlit ---
+import urllib.parse
+
 def display_pdf(well_list: list[str], files_df: pd.DataFrame):
     """
-    For each well in well_list, look up its PDF path in files_df and show it.
+    For each well in well_list, look up its PDF path in files_df and show it via public Azure URL.
     """
+    base_url = "https://ipr-dfms-app-cjeda9gxeghka0cm.westeurope-01.azurewebsites.net/CPI/"
+
     for well in well_list:
         pdf_row = files_df[
             (files_df['well_bore'] == well) &
             (files_df['file_type'].str.lower() == 'pdf')
         ]
         if not pdf_row.empty:
-            path = pdf_row.iloc[0]['file_path']
-            st.write(f"**{well}** ‣ `{path}`")
-            if os.path.exists(path):
-                pages = render_pdf_pages(path)
-                # Embed all pages in a scrollable div
-                imgs = "".join(
-                    f'<img src="data:image/png;base64,{b}" '
-                    f'style="width:100%; margin-bottom:1rem;" />'
-                    for b in pages
-                )
-                html(
-                    f'<div style="width:100%; height:1000px; overflow-y:auto; '
-                    f'border:1px solid #ddd; background:white; padding:0.5rem;">{imgs}</div>',
-                    height=1000
-                )
-            else:
-                st.error(f"File not found: {path}")
+            local_path = pdf_row.iloc[0]['file_path']
+            filename = Path(local_path).name
+            url_safe_name = urllib.parse.quote(filename)
+            file_url = base_url + url_safe_name
+
+            st.write(f"**{well}** – [📄 Open PDF]({file_url})", unsafe_allow_html=True)
+
+            st.components.v1.iframe(file_url, height=800)
         else:
             st.write(f"No PDF found for well **{well}**.")
+
 
 
 # --- Filtering Logic ---
