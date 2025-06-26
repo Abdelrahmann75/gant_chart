@@ -115,7 +115,7 @@ else:
         ]
 
         # Group pages into sections
-        sections = {"AI Assistant": [], "Updating Database": [], "Detailed Analysis": []}
+        sections = {"AI Assistant": [], "Updating Database": [], "Detailed Analysis": [],"Well Data" : []}
         for page in pages:
             if page["file"] == "app.py":
                 file_path = llm_path / page["file"]
