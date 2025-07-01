@@ -1,4 +1,4 @@
-import os
+mport os
 import base64
 import sqlite3
 
@@ -12,7 +12,6 @@ from pathlib import Path
 from streamlit_plotly_events import plotly_events
 from streamlit.components.v1 import html
 import plotly.graph_objects as go
-from urllib.parse import quote
 
 # --- Set page layout and title ---
 
@@ -83,31 +82,52 @@ def load_well_files(db_path):
         return pd.DataFrame(columns=["well_bore", "file_path", "file_type"])
 
 
+@st.cache_data
+def render_pdf_pages(path: str, dpi: int = 82) -> list[str]:
+    """
+    Convert each page of a PDF to a base64‐encoded PNG so Streamlit can embed it.
+    """
+    try:
+        doc = fitz.open(path)
+        images = []
+        for page in doc:
+            pix = page.get_pixmap(dpi=dpi)
+            png_bytes = pix.tobytes("png")
+            b64 = base64.b64encode(png_bytes).decode("utf-8")
+            images.append(b64)
+        return images
+    except Exception:
+        return []
 
 
-
-
-
+# --- Helper to display PDF inline in Streamlit ---
 def display_pdf(well_list: list[str], files_df: pd.DataFrame):
-    base_url = "https://ipr-dfms-app-cjeda9gxeghka0cm.westeurope-01.azurewebsites.net/my_pages"
-
+    """
+    For each well in well_list, look up its PDF path in files_df and show it.
+    """
     for well in well_list:
         pdf_row = files_df[
             (files_df['well_bore'] == well) &
             (files_df['file_type'].str.lower() == 'pdf')
         ]
         if not pdf_row.empty:
-            file_path = pdf_row.iloc[0]['file_path']
-            filename = os.path.basename(file_path)
-            encoded_filename = quote(filename)
-            pdf_url = f"{base_url}/{encoded_filename}"
-
-            st.write(f"**{well}** ‣ [Open PDF]({pdf_url})")
-            st.markdown(
-                f'<iframe src="{pdf_url}" width="100%" height="1000px" '
-                f'style="border:1px solid #ccc;"></iframe>',
-                unsafe_allow_html=True
-            )
+            path = pdf_row.iloc[0]['file_path']
+            st.write(f"**{well}** ‣ {path}")
+            if os.path.exists(path):
+                pages = render_pdf_pages(path)
+                # Embed all pages in a scrollable div
+                imgs = "".join(
+                    f'<img src="data:image/png;base64,{b}" '
+                    f'style="width:100%; margin-bottom:1rem;" />'
+                    for b in pages
+                )
+                html(
+                    f'<div style="width:100%; height:1000px; overflow-y:auto; '
+                    f'border:1px solid #ddd; background:white; padding:0.5rem;">{imgs}</div>',
+                    height=1000
+                )
+            else:
+                st.error(f"File not found: {path}")
         else:
             st.write(f"No PDF found for well **{well}**.")
 
