@@ -41,9 +41,9 @@ def get_pdf_base_path():
     Get the base path for PDF files in Azure environment.
     Adjusts the path based on current file location.
     """
-    current_file_path = Path(__file__).parent
+   
     # Navigate to the Azure root directory and then to the PDF files location
-    pdf_base_path = current_file_path.parent.parent / "CPI" / "extracted_batches"
+    pdf_base_path = Path(__file__).parent.parent / "CPI" / "extracted_batches"
     return pdf_base_path
 
 
