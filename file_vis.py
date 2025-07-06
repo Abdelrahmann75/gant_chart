@@ -1,6 +1,6 @@
-mport os
 import base64
 import sqlite3
+import os
 
 import pandas as pd
 import streamlit as st
@@ -33,6 +33,18 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+
+# --- Helper function to get PDF files base path ---
+def get_pdf_base_path():
+    """
+    Get the base path for PDF files in Azure environment.
+    Adjusts the path based on current file location.
+    """
+    current_file_path = Path(__file__).parent
+    # Navigate to the Azure root directory and then to the PDF files location
+    pdf_base_path = current_file_path.parent.parent / "CPI" / "extracted_batches"
+    return pdf_base_path
 
 
 # --- Data Loaders ---
@@ -96,7 +108,8 @@ def render_pdf_pages(path: str, dpi: int = 82) -> list[str]:
             b64 = base64.b64encode(png_bytes).decode("utf-8")
             images.append(b64)
         return images
-    except Exception:
+    except Exception as e:
+        st.error(f"Error rendering PDF {path}: {e}")
         return []
 
 
@@ -105,29 +118,52 @@ def display_pdf(well_list: list[str], files_df: pd.DataFrame):
     """
     For each well in well_list, look up its PDF path in files_df and show it.
     """
+    pdf_base_path = get_pdf_base_path()
+    
     for well in well_list:
         pdf_row = files_df[
             (files_df['well_bore'] == well) &
             (files_df['file_type'].str.lower() == 'pdf')
         ]
         if not pdf_row.empty:
-            path = pdf_row.iloc[0]['file_path']
-            st.write(f"**{well}** ‣ {path}")
-            if os.path.exists(path):
-                pages = render_pdf_pages(path)
-                # Embed all pages in a scrollable div
-                imgs = "".join(
-                    f'<img src="data:image/png;base64,{b}" '
-                    f'style="width:100%; margin-bottom:1rem;" />'
-                    for b in pages
-                )
-                html(
-                    f'<div style="width:100%; height:1000px; overflow-y:auto; '
-                    f'border:1px solid #ddd; background:white; padding:0.5rem;">{imgs}</div>',
-                    height=1000
-                )
+            # Get the filename from database
+            filename = pdf_row.iloc[0]['file_path']
+            
+            # Construct the full path
+            full_path = pdf_base_path / filename
+            
+            st.write(f"**{well}** ‣ {filename}")
+            st.write(f"Looking for file at: {full_path}")
+            
+            if full_path.exists():
+                pages = render_pdf_pages(str(full_path))
+                if pages:
+                    # Embed all pages in a scrollable div
+                    imgs = "".join(
+                        f'<img src="data:image/png;base64,{b}" '
+                        f'style="width:100%; margin-bottom:1rem;" />'
+                        for b in pages
+                    )
+                    html(
+                        f'<div style="width:100%; height:1000px; overflow-y:auto; '
+                        f'border:1px solid #ddd; background:white; padding:0.5rem;">{imgs}</div>',
+                        height=1000
+                    )
+                else:
+                    st.error(f"Could not render PDF: {filename}")
             else:
-                st.error(f"File not found: {path}")
+                st.error(f"File not found: {full_path}")
+                # Debug: List files in the directory
+                try:
+                    if pdf_base_path.exists():
+                        available_files = list(pdf_base_path.glob("*.pdf"))
+                        st.write(f"Available PDF files in {pdf_base_path}:")
+                        for f in available_files[:10]:  # Show first 10 files
+                            st.write(f"- {f.name}")
+                    else:
+                        st.write(f"Directory does not exist: {pdf_base_path}")
+                except Exception as e:
+                    st.write(f"Error listing directory: {e}")
         else:
             st.write(f"No PDF found for well **{well}**.")
 
@@ -256,8 +292,6 @@ def display_filters():
         filtered_files = pd.DataFrame()  # none selected
 
     return filtered_prod, all_files_df, filtered_files, header_df, company_selection, selected_well_bores
-
-
 
 
 def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
@@ -446,7 +480,7 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
         ),
         width=1800,
         height=1000,
-        dragmode="pan",  # default to pan so users aren’t forced to zoom
+        dragmode="pan",  # default to pan so users aren't forced to zoom
     )
 
     # 11) Render the chart via plotly_events (larger size, no flicker)
@@ -492,8 +526,6 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
                 st.info(f"No PDF found for well {well_clicked}.")
     else:
         st.write("No well selected yet. Click any bubble above to view its PDF.")
-
-# ... (keep all your code above as-is)
 
 # --- Main App Logic ---
 st.title("Well File PDF Viewer & Bubble Map")
