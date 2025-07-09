@@ -29,12 +29,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Helper function to get PDF base URL ---
-def get_pdf_base_path():
-    """
-    Get the base URL for PDF files in Azure Blob Storage.
-    """
-    return "https://iprdashboard.blob.core.windows.net/pdf-excel/"
+
 
 # --- Data Loaders ---
 @st.cache_data
@@ -82,12 +77,15 @@ def load_well_files(db_path):
 
 
 
+
+
 def display_pdf(well_list: list[str], files_df: pd.DataFrame):
     """
     For each well in well_list, look up its PDF path in files_df and show it in an iframe.
     """
-    pdf_base_url = get_pdf_base_path()
-    
+    # Hardcoded base URL for Azure Blob Storage
+    pdf_base_url = "https://iprdashboard.blob.core.windows.net/pdf-excel/"
+
     for well in well_list:
         pdf_row = files_df[
             (files_df['well_bore'] == well) &
@@ -103,15 +101,23 @@ def display_pdf(well_list: list[str], files_df: pd.DataFrame):
             st.write(f"Loading PDF from: {full_url}")
             
             try:
-                html(
-                    f'<iframe src="{full_url}" width="100%" height="1000px" '
-                    f'style="border:1px solid #ddd; background:white;"></iframe>',
-                    height=1000
-                )
+                # Use Streamlit's html with a safer iframe setup
+                html_code = f'''
+                    <iframe 
+                        src="{full_url}" 
+                        width="100%" 
+                        height="1000px" 
+                        style="border:1px solid #ddd; background:white;" 
+                        sandbox="allow-same-origin allow-scripts allow-popups"
+                        allow="fullscreen"
+                    ></iframe>
+                '''
+                st.components.v1.html(html_code, height=1000, scrolling=True)
             except Exception as e:
                 st.error(f"Error embedding PDF {filename}: {e}")
         else:
             st.write(f"No PDF found for well **{well}**.")
+
 
 
 # --- Filtering Logic ---
