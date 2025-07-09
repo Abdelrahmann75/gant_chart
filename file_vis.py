@@ -263,7 +263,7 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
     # 4) Merge coordinates + type from header_df into oilw
     merged = header_df.merge(oilw, on="well_bore", how="inner")
     merged["xcord"] = pd.to_numeric(merged["xcord"], errors="coerce")
-    merged "ycord"] = pd.to_numeric(merged["ycord"], errors="coerce")
+    merged ["ycord"] = pd.to_numeric(merged["ycord"], errors="coerce")
     merged.dropna(subset=["xcord", "ycord"], inplace=True)
 
     # 5) Build custom hover‐text, showing only "WC" (no literal "Water Cut")
