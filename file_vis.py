@@ -8,8 +8,7 @@ from streamlit_plotly_events import plotly_events
 from streamlit.components.v1 import html
 import plotly.graph_objects as go
 
-# --- Set page layout and title ---
-st.set_page_config(layout="wide", page_title="Well File PDF Viewer & Bubble Map")
+
 
 # --- Custom CSS styling ---
 st.markdown("""
