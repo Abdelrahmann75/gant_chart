@@ -78,10 +78,13 @@ def load_well_files(db_path):
 
 def display_pdf(well_list: list[str], files_df: pd.DataFrame):
     """
-    For each well in well_list, look up its PDF path in files_df and show it in an iframe.
+    For each well in well_list, look up its PDF path in files_df and show it via Google Docs Viewer.
     """
-    # Hardcoded base URL for Azure Blob Storage
+    # Base Azure Blob URL
     pdf_base_url = "https://iprdashboard.blob.core.windows.net/pdf-excel/"
+    
+    # ✅ Working SAS token (blob-level)
+    sas_token = "sp=r&st=2025-07-01T10:59:09Z&se=2028-07-09T18:59:09Z&spr=https&sv=2024-11-04&sr=b&sig=W2rorR4VOms37RTvWamemDuiHd%2FRm9wTE3M%2BPdAx3BQ%3D"
 
     for well in well_list:
         pdf_row = files_df[
@@ -90,32 +93,29 @@ def display_pdf(well_list: list[str], files_df: pd.DataFrame):
         ]
         if not pdf_row.empty:
             filename = pdf_row.iloc[0]['file_path']
-            encoded_filename = quote(filename)  # safely encode for URL
-            
-            full_url = f"{pdf_base_url}{encoded_filename}"
-            
-            st.write(f"**{well}** ‣ {filename}")
-            st.write(f"Loading PDF from: {full_url}")
-            
-            try:
-                # Adjusted iframe with safer sandbox attributes
-                html_code = f'''
-                    <iframe 
-                        src="{full_url}" 
-                        width="100%" 
-                        height="1000px" 
-                        style="border:1px solid #ddd; background:white;" 
-                        sandbox="allow-same-origin allow-popups-to-escape-sandbox allow-forms"
-                        allow="fullscreen"
-                        referrerpolicy="no-referrer-when-downgrade"
-                    ></iframe>
-                '''
-                st.components.v1.html(html_code, height=1000, scrolling=True)
-            except Exception as e:
-                st.error(f"Error embedding PDF {filename}: {e}")
-        else:
-            st.write(f"No PDF found for well **{well}**.")
+            encoded_filename = quote(filename)
 
+            # Full blob URL with SAS
+            full_url = f"{pdf_base_url}{encoded_filename}?{sas_token}"
+
+            # Google Docs Viewer embed link
+            viewer_url = f"https://docs.google.com/gview?url={full_url}&embedded=true"
+
+            st.write(f"**{well}** ‣ {filename}")
+            st.write(f"Loading PDF from: {viewer_url}")
+
+            # Embed via Google Viewer
+            html_code = f'''
+                <iframe 
+                    src="{viewer_url}" 
+                    width="100%" 
+                    height="1000px" 
+                    style="border:1px solid #ccc;">
+                </iframe>
+            '''
+            st.components.v1.html(html_code, height=1000)
+        else:
+            st.warning(f"No PDF found for well **{well}**.")
 
 
 # --- Filtering Logic ---
