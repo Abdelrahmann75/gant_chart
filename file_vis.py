@@ -76,9 +76,6 @@ def load_well_files(db_path):
         return pd.DataFrame(columns=["well_bore", "file_path", "file_type"])
 
 
-
-
-
 def display_pdf(well_list: list[str], files_df: pd.DataFrame):
     """
     For each well in well_list, look up its PDF path in files_df and show it in an iframe.
@@ -101,15 +98,16 @@ def display_pdf(well_list: list[str], files_df: pd.DataFrame):
             st.write(f"Loading PDF from: {full_url}")
             
             try:
-                # Use Streamlit's html with a safer iframe setup
+                # Adjusted iframe with safer sandbox attributes
                 html_code = f'''
                     <iframe 
                         src="{full_url}" 
                         width="100%" 
                         height="1000px" 
                         style="border:1px solid #ddd; background:white;" 
-                        sandbox="allow-same-origin allow-scripts allow-popups"
+                        sandbox="allow-same-origin allow-popups-to-escape-sandbox allow-forms"
                         allow="fullscreen"
+                        referrerpolicy="no-referrer-when-downgrade"
                     ></iframe>
                 '''
                 st.components.v1.html(html_code, height=1000, scrolling=True)
