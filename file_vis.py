@@ -1,20 +1,15 @@
 import base64
 import sqlite3
-import os
-
 import pandas as pd
 import streamlit as st
 import plotly.express as px
-import fitz  # PyMuPDF
 from pathlib import Path
-
-# Import the helper to capture Plotly click events
 from streamlit_plotly_events import plotly_events
 from streamlit.components.v1 import html
 import plotly.graph_objects as go
 
 # --- Set page layout and title ---
-
+st.set_page_config(layout="wide", page_title="Well File PDF Viewer & Bubble Map")
 
 # --- Custom CSS styling ---
 st.markdown("""
@@ -34,18 +29,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-
-# --- Helper function to get PDF files base path ---
+# --- Helper function to get PDF base URL ---
 def get_pdf_base_path():
     """
-    Get the base path for PDF files in Azure environment.
-    Adjusts the path based on current file location.
+    Get the base URL for PDF files in Azure Blob Storage.
     """
-   
-    # Navigate to the Azure root directory and then to the PDF files location
-    pdf_base_path = Path(__file__).parent.parent / "CPI" / "extracted_batches"
-    return pdf_base_path
-
+    return "https://iprdashboard.blob.core.windows.net/pdf-excel/"
 
 # --- Data Loaders ---
 @st.cache_data
@@ -63,7 +52,6 @@ def load_vi_map(db_path):
         st.warning(f"Could not load vi_map from {db_path}: {e}")
         return pd.DataFrame(columns=["date", "well_bore", "oil", "wc", "field"])
 
-
 @st.cache_data
 def load_header_data(db_path):
     """
@@ -77,7 +65,6 @@ def load_header_data(db_path):
     except Exception as e:
         st.warning(f"Could not load header_id from {db_path}: {e}")
         return pd.DataFrame(columns=["well_bore", "zone", "xcord", "ycord", "type"])
-
 
 @st.cache_data
 def load_well_files(db_path):
@@ -93,32 +80,12 @@ def load_well_files(db_path):
         st.warning(f"Could not load well_files_vis from {db_path}: {e}")
         return pd.DataFrame(columns=["well_bore", "file_path", "file_type"])
 
-
-@st.cache_data
-def render_pdf_pages(path: str, dpi: int = 82) -> list[str]:
-    """
-    Convert each page of a PDF to a base64‐encoded PNG so Streamlit can embed it.
-    """
-    try:
-        doc = fitz.open(path)
-        images = []
-        for page in doc:
-            pix = page.get_pixmap(dpi=dpi)
-            png_bytes = pix.tobytes("png")
-            b64 = base64.b64encode(png_bytes).decode("utf-8")
-            images.append(b64)
-        return images
-    except Exception as e:
-        st.error(f"Error rendering PDF {path}: {e}")
-        return []
-
-
-# --- Helper to display PDF inline in Streamlit ---
+# --- Helper to display PDF inline in Streamlit using iframe ---
 def display_pdf(well_list: list[str], files_df: pd.DataFrame):
     """
-    For each well in well_list, look up its PDF path in files_df and show it.
+    For each well in well_list, look up its PDF path in files_df and show it in an iframe.
     """
-    pdf_base_path = get_pdf_base_path()
+    pdf_base_url = get_pdf_base_path()
     
     for well in well_list:
         pdf_row = files_df[
@@ -129,44 +96,23 @@ def display_pdf(well_list: list[str], files_df: pd.DataFrame):
             # Get the filename from database
             filename = pdf_row.iloc[0]['file_path']
             
-            # Construct the full path
-            full_path = pdf_base_path / filename
+            # Construct the full URL
+            full_url = f"{pdf_base_url}{filename}"
             
             st.write(f"**{well}** ‣ {filename}")
-            st.write(f"Looking for file at: {full_path}")
+            st.write(f"Loading PDF from: {full_url}")
             
-            if full_path.exists():
-                pages = render_pdf_pages(str(full_path))
-                if pages:
-                    # Embed all pages in a scrollable div
-                    imgs = "".join(
-                        f'<img src="data:image/png;base64,{b}" '
-                        f'style="width:100%; margin-bottom:1rem;" />'
-                        for b in pages
-                    )
-                    html(
-                        f'<div style="width:100%; height:1000px; overflow-y:auto; '
-                        f'border:1px solid #ddd; background:white; padding:0.5rem;">{imgs}</div>',
-                        height=1000
-                    )
-                else:
-                    st.error(f"Could not render PDF: {filename}")
-            else:
-                st.error(f"File not found: {full_path}")
-                # Debug: List files in the directory
-                try:
-                    if pdf_base_path.exists():
-                        available_files = list(pdf_base_path.glob("*.pdf"))
-                        st.write(f"Available PDF files in {pdf_base_path}:")
-                        for f in available_files[:10]:  # Show first 10 files
-                            st.write(f"- {f.name}")
-                    else:
-                        st.write(f"Directory does not exist: {pdf_base_path}")
-                except Exception as e:
-                    st.write(f"Error listing directory: {e}")
+            # Embed PDF using iframe
+            try:
+                html(
+                    f'<iframe src="{full_url}" width="100%" height="1000px" '
+                    f'style="border:1px solid #ddd; background:white;"></iframe>',
+                    height=1000
+                )
+            except Exception as e:
+                st.error(f"Error embedding PDF {filename}: {e}")
         else:
             st.write(f"No PDF found for well **{well}**.")
-
 
 # --- Filtering Logic ---
 def apply_common_filters(df, selected_date_range, selected_fields, selected_zones, selected_types):
@@ -199,7 +145,6 @@ def apply_common_filters(df, selected_date_range, selected_fields, selected_zone
         filtered_df = filtered_df[filtered_df['type'].isin(selected_types)]
 
     return filtered_df
-
 
 # --- UI Filters (returns both all_files_df and filtered_files_df) ---
 def display_filters():
@@ -293,34 +238,32 @@ def display_filters():
 
     return filtered_prod, all_files_df, filtered_files, header_df, company_selection, selected_well_bores
 
-
 def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
     """
     1) Build a single Plotly figure containing producers + WIs with a visible WC colorbar.
     2) On click, grab well_bore from customdata or fallback to matching (x, y).
     3) Show that well's PDF.
     """
-
     # 1) Apply common filters to vi_df (date_range, fields, etc.)
     df = apply_common_filters(vi_df, date_range, fields, [], [])
 
     # 2) Compute cumulative oil + average WC per well
-    oil_wc = df.groupby("well_bore").agg({"oil": "sum", "wc": "mean"}).reset_index()
-    oil_wc.columns = ["well_bore", "cumm", "avg_wc"]
-    oil_wc["avg_wc"] = oil_wc["avg_wc"].round(2)
+    oilw = df.groupby("well_bore").agg({"oil": "sum", "wc": "mean"}).reset_index()
+    oilw.columns = ["well_bore", "cumm", "avg_wc"]
+    oilw["avg_wc"] = oilw["avg_wc"].round(2)
 
     # 3) Format the cumulative oil as Mbbl or bbl depending on date span
     date_diff = (date_range[1] - date_range[0]).days
     if date_diff > 30:
-        oil_wc["cumm"] = oil_wc["cumm"] / 1000
-        oil_wc["cumm_fmt"] = oil_wc["cumm"].apply(lambda x: f"{int(x):,} Mbbl")
+        oilw["cumm"] = oilw["cumm"] / 1000
+        oilw["cumm_fmt"] = oilw["cumm"].apply(lambda x: f"{int(x):,} Mbbl")
     else:
-        oil_wc["cumm_fmt"] = oil_wc["cumm"].apply(lambda x: f"{int(x):,} bbl")
+        oilw["cumm_fmt"] = oilw["cumm"].apply(lambda x: f"{int(x):,} bbl")
 
-    # 4) Merge coordinates + type from header_df into oil_wc
-    merged = header_df.merge(oil_wc, on="well_bore", how="inner")
+    # 4) Merge coordinates + type from header_df into oilw
+    merged = header_df.merge(oilw, on="well_bore", how="inner")
     merged["xcord"] = pd.to_numeric(merged["xcord"], errors="coerce")
-    merged["ycord"] = pd.to_numeric(merged["ycord"], errors="coerce")
+    merged "ycord"] = pd.to_numeric(merged["ycord"], errors="coerce")
     merged.dropna(subset=["xcord", "ycord"], inplace=True)
 
     # 5) Build custom hover‐text, showing only "WC" (no literal "Water Cut")
@@ -449,7 +392,6 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
             title="Y Coordinates",
             autorange=True,
             range=[y_min - y_pad, y_max + y_pad],
-            
             gridcolor="grey",
             showgrid=True,
             titlefont=dict(size=16),
