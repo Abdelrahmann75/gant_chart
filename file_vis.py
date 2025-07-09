@@ -7,6 +7,7 @@ from pathlib import Path
 from streamlit_plotly_events import plotly_events
 from streamlit.components.v1 import html
 import plotly.graph_objects as go
+from urllib.parse import quote  # make sure this is imported at the top
 
 
 
@@ -79,7 +80,8 @@ def load_well_files(db_path):
         st.warning(f"Could not load well_files_vis from {db_path}: {e}")
         return pd.DataFrame(columns=["well_bore", "file_path", "file_type"])
 
-# --- Helper to display PDF inline in Streamlit using iframe ---
+
+
 def display_pdf(well_list: list[str], files_df: pd.DataFrame):
     """
     For each well in well_list, look up its PDF path in files_df and show it in an iframe.
@@ -92,16 +94,14 @@ def display_pdf(well_list: list[str], files_df: pd.DataFrame):
             (files_df['file_type'].str.lower() == 'pdf')
         ]
         if not pdf_row.empty:
-            # Get the filename from database
             filename = pdf_row.iloc[0]['file_path']
+            encoded_filename = quote(filename)  # safely encode for URL
             
-            # Construct the full URL
-            full_url = f"{pdf_base_url}{filename}"
+            full_url = f"{pdf_base_url}{encoded_filename}"
             
             st.write(f"**{well}** ‣ {filename}")
             st.write(f"Loading PDF from: {full_url}")
             
-            # Embed PDF using iframe
             try:
                 html(
                     f'<iframe src="{full_url}" width="100%" height="1000px" '
@@ -112,6 +112,7 @@ def display_pdf(well_list: list[str], files_df: pd.DataFrame):
                 st.error(f"Error embedding PDF {filename}: {e}")
         else:
             st.write(f"No PDF found for well **{well}**.")
+
 
 # --- Filtering Logic ---
 def apply_common_filters(df, selected_date_range, selected_fields, selected_zones, selected_types):
