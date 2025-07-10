@@ -78,13 +78,10 @@ def load_well_files(db_path):
 
 def display_pdf(well_list: list[str], files_df: pd.DataFrame):
     """
-    For each well in well_list, look up its PDF path in files_df and show it via Google Docs Viewer.
+    For each well in well_list, look up its PDF path in files_df and show it via Google Docs Viewer (public access).
     """
-    # Base Azure Blob URL
+    # Public base URL (no token)
     pdf_base_url = "https://iprdashboard.blob.core.windows.net/pdf-excel/"
-    
-    # ✅ Working SAS token (blob-level)
-    sas_token = "sp=r&st=2025-07-01T10:59:09Z&se=2028-07-09T18:59:09Z&spr=https&sv=2024-11-04&sr=b&sig=W2rorR4VOms37RTvWamemDuiHd%2FRm9wTE3M%2BPdAx3BQ%3D"
 
     for well in well_list:
         pdf_row = files_df[
@@ -95,16 +92,12 @@ def display_pdf(well_list: list[str], files_df: pd.DataFrame):
             filename = pdf_row.iloc[0]['file_path']
             encoded_filename = quote(filename)
 
-            # Full blob URL with SAS
-            full_url = f"{pdf_base_url}{encoded_filename}?{sas_token}"
-
-            # Google Docs Viewer embed link
+            full_url = f"{pdf_base_url}{encoded_filename}"
             viewer_url = f"https://docs.google.com/gview?url={full_url}&embedded=true"
 
             st.write(f"**{well}** ‣ {filename}")
             st.write(f"Loading PDF from: {viewer_url}")
 
-            # Embed via Google Viewer
             html_code = f'''
                 <iframe 
                     src="{viewer_url}" 
