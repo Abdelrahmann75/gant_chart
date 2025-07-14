@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv()  # Load all the environment variables
 
 import streamlit as st
 import os
