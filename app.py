@@ -11,7 +11,7 @@ CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 
 # Constants
-DB_PATH = r'Y:\IPR_App\update\petrosila.db'
+DB_PATH = Path(__file__).parent.parent / "data" / "petrosila.db"
 ERROR_MESSAGE = "I don't have this information. I will ask Engineer Abdelrahman; he is the one who created me and get back to you."
 
 prompt = [
