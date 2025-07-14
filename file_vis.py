@@ -7,9 +7,7 @@ from pathlib import Path
 from streamlit_plotly_events import plotly_events
 from streamlit.components.v1 import html
 import plotly.graph_objects as go
-from urllib.parse import quote  # make sure this is imported at the top
-
-
+from urllib.parse import quote
 
 # --- Custom CSS styling ---
 st.markdown("""
@@ -28,8 +26,6 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-
-
 
 # --- Data Loaders ---
 @st.cache_data
@@ -64,39 +60,39 @@ def load_header_data(db_path):
 @st.cache_data
 def load_well_files(db_path):
     """
-    Load well_files_vis table: well_bore, file_path, file_type
+    Load well_files_vis table: well_bore, file_path, file_type, file_category
     """
     try:
         conn = sqlite3.connect(db_path)
-        df = pd.read_sql_query("SELECT well_bore, file_path, file_type FROM well_files_vis", conn)
+        df = pd.read_sql_query("SELECT well_bore, file_path, file_type, file_category FROM well_files_vis", conn)
         conn.close()
-        return df.dropna(subset=["file_path", "file_type"])
+        return df.dropna(subset=["file_path", "file_type", "file_category"])
     except Exception as e:
         st.warning(f"Could not load well_files_vis from {db_path}: {e}")
-        return pd.DataFrame(columns=["well_bore", "file_path", "file_type"])
+        return pd.DataFrame(columns=["well_bore", "file_path", "file_type", "file_category"])
 
-
-def display_pdf(well_list: list[str], files_df: pd.DataFrame):
+def display_file(well_list: list[str], files_df: pd.DataFrame, file_category: str):
     """
-    For each well in well_list, look up its PDF path in files_df and show it via Google Docs Viewer (public access).
+    For each well in well_list, look up its file path in files_df for the specified file_category
+    and show it via Google Docs Viewer (public access). Handles both WBS and CPI.
     """
-    # Public base URL (no token)
     pdf_base_url = "https://iprdashboard.blob.core.windows.net/pdf-excel/"
 
     for well in well_list:
-        pdf_row = files_df[
+        file_row = files_df[
             (files_df['well_bore'] == well) &
-            (files_df['file_type'].str.lower() == 'pdf')
+            (files_df['file_type'].str.lower() == 'pdf') &
+            (files_df['file_category'].str.lower() == file_category.lower())
         ]
-        if not pdf_row.empty:
-            filename = pdf_row.iloc[0]['file_path']
+        if not file_row.empty:
+            filename = file_row.iloc[0]['file_path']
             encoded_filename = quote(filename)
 
             full_url = f"{pdf_base_url}{encoded_filename}"
             viewer_url = f"https://docs.google.com/gview?url={full_url}&embedded=true"
 
-            st.write(f"**{well}** ‣ {filename}")
-            st.write(f"Loading PDF from: {viewer_url}")
+            st.write(f"**{well}** ‣ {file_category} ‣ {filename}")
+            st.write(f"Loading {file_category} PDF from: {viewer_url}")
 
             html_code = f'''
                 <iframe 
@@ -108,8 +104,7 @@ def display_pdf(well_list: list[str], files_df: pd.DataFrame):
             '''
             st.components.v1.html(html_code, height=1000)
         else:
-            st.warning(f"No PDF found for well **{well}**.")
-
+            st.warning(f"No {file_category} PDF found for well **{well}**.")
 
 # --- Filtering Logic ---
 def apply_common_filters(df, selected_date_range, selected_fields, selected_zones, selected_types):
@@ -126,24 +121,20 @@ def apply_common_filters(df, selected_date_range, selected_fields, selected_zone
         if 'type' in df.columns:
             selected_types = df['type'].dropna().unique()
 
-    # Filter by date range
     filtered_df = df[
         (df['date'] >= selected_date_range[0]) &
         (df['date'] <= selected_date_range[1])
     ]
-    # Filter by field
     filtered_df = filtered_df[filtered_df['field'].isin(selected_fields)]
 
-    # Filter by zone if available
     if 'zone' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['zone'].isin(selected_zones)]
-    # Filter by type if available
     if 'type' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['type'].isin(selected_types)]
 
     return filtered_df
 
-# --- UI Filters (returns both all_files_df and filtered_files_df) ---
+# --- UI Filters ---
 def display_filters():
     """
     1) Let user pick company
@@ -160,12 +151,11 @@ def display_filters():
     db2 = Path(__file__).parent.parent / "data" / "alamein_db.sqlite3"
     db1 = Path(__file__).parent.parent / "data" / "petrosila.db"
     company_options = {"Petrosilah": db1, "Alamein": db2}
-    h1,h2,h3 = st.columns([1, 1, 1])
+    h1, h2, h3 = st.columns([1, 1, 1])
     with h1:
         company_selection = st.selectbox("**Select Company:**", list(company_options.keys()))
     db_path = company_options[company_selection]
 
-    # Load production and header
     prod_df = load_vi_map(db_path)
     header_df = load_header_data(db_path)
 
@@ -173,7 +163,6 @@ def display_filters():
         st.warning("No data available for this company.")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), company_selection, []
 
-    # Merge in zone/type to production df (for filtering)
     prod_df = prod_df.merge(header_df[['well_bore', 'zone', 'type']], on='well_bore', how='left')
 
     with st.container():
@@ -196,14 +185,12 @@ def display_filters():
 
         col4, col5, col6 = st.columns([1, 1, 1])
         with col4:
-            # Show only wells in the chosen fields
             filtered_for_wells = prod_df[prod_df['field'].isin(selected_fields)]
             selected_well_bores = st.multiselect(
                 "**Select Well Bores:**",
                 filtered_for_wells['well_bore'].dropna().unique()
             )
         with col5:
-            # Zone dropdown depends on either all header_df or selected wells
             filtered_for_zones = header_df.copy()
             if selected_well_bores:
                 filtered_for_zones = filtered_for_zones[
@@ -211,9 +198,7 @@ def display_filters():
                 ]
             zone_options = sorted(filtered_for_zones['zone'].dropna().unique())
             selected_zones = st.multiselect("**Select Zones:**", zone_options)
-        # col6 is empty for now
 
-    # Now apply filters to production
     filtered_prod = apply_common_filters(
         prod_df,
         selected_date_range,
@@ -222,16 +207,14 @@ def display_filters():
         selected_types
     )
 
-    # Load *all* well files (unfiltered)
     all_files_df = load_well_files(db_path)
 
-    # Among those files, keep only rows whose well_bore is in the multiselect
     if selected_well_bores:
         filtered_files = all_files_df[
             all_files_df['well_bore'].isin(selected_well_bores)
         ]
     else:
-        filtered_files = pd.DataFrame()  # none selected
+        filtered_files = pd.DataFrame()
 
     return filtered_prod, all_files_df, filtered_files, header_df, company_selection, selected_well_bores
 
@@ -239,17 +222,13 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
     """
     1) Build a single Plotly figure containing producers + WIs with a visible WC colorbar.
     2) On click, grab well_bore from customdata or fallback to matching (x, y).
-    3) Show that well's PDF.
+    3) Update session state to trigger file display in main logic.
     """
-    # 1) Apply common filters to vi_df (date_range, fields, etc.)
     df = apply_common_filters(vi_df, date_range, fields, [], [])
-
-    # 2) Compute cumulative oil + average WC per well
     oilw = df.groupby("well_bore").agg({"oil": "sum", "wc": "mean"}).reset_index()
     oilw.columns = ["well_bore", "cumm", "avg_wc"]
     oilw["avg_wc"] = oilw["avg_wc"].round(2)
 
-    # 3) Format the cumulative oil as Mbbl or bbl depending on date span
     date_diff = (date_range[1] - date_range[0]).days
     if date_diff > 30:
         oilw["cumm"] = oilw["cumm"] / 1000
@@ -257,20 +236,16 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
     else:
         oilw["cumm_fmt"] = oilw["cumm"].apply(lambda x: f"{int(x):,} bbl")
 
-    # 4) Merge coordinates + type from header_df into oilw
     merged = header_df.merge(oilw, on="well_bore", how="inner")
     merged["xcord"] = pd.to_numeric(merged["xcord"], errors="coerce")
-    merged ["ycord"] = pd.to_numeric(merged["ycord"], errors="coerce")
+    merged["ycord"] = pd.to_numeric(merged["ycord"], errors="coerce")
     merged.dropna(subset=["xcord", "ycord"], inplace=True)
 
-    # 5) Build custom hover‐text, showing only "WC" (no literal "Water Cut")
     merged["custom_text"] = merged.apply(
         lambda row: (
-            # If it's a WI, just show the well_bore in large font
             f"<span style='font-size:18px;'><b>{row['well_bore']}</b></span>"
             if row["type"] == "WI"
             else
-            # Otherwise show well_bore + Oil + WC
             f"<span style='font-size:18px;'>"
             f"<b>{row['well_bore']}</b><br>"
             f"<b>Oil:</b> {row['cumm_fmt']}<br>"
@@ -280,26 +255,19 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
         axis=1,
     )
 
-    # 6) Separate "producer" vs "WI" and remove any coordinate overlaps
     producers = merged[merged["type"] == "producer"].copy()
     wis = merged[merged["type"] == "WI"].copy()
-
-    # If a WI and a producer share exact (x,y), remove the producer so only WI shows
     overlap_coords = set(zip(wis["xcord"], wis["ycord"]))
     producers = producers[
         ~producers[["xcord", "ycord"]].apply(tuple, axis=1).isin(overlap_coords)
     ]
 
-    # 7) Mark which producers actually have oil vs shut-in (NaN cumm)
     producers["has_oil"] = producers["cumm"].notna() & (producers["cumm"] > 0)
+    producers_colored = producers[producers["has_oil"]].copy()
+    producers_na = producers[~producers["has_oil"]].copy()
 
-    producers_colored = producers[producers["has_oil"]].copy()  # will map color by avg_wc
-    producers_na = producers[~producers["has_oil"]].copy()      # black for shut-in
-
-    # 8) Build one Plotly Figure, starting with the producers_with_oil trace:
     fig = go.Figure()
 
-    # 8a) Producers WITH oil → colored by avg_wc, using shared coloraxis
     fig.add_trace(
         go.Scatter(
             x=producers_colored["xcord"],
@@ -307,7 +275,7 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
             mode="markers+text",
             marker=dict(
                 size=40,
-                color=producers_colored["avg_wc"],      # map color to WC
+                color=producers_colored["avg_wc"],
                 colorscale=[[0.0, "green"], [0.5, "white"], [1.0, "lightblue"]],
                 cmin=0,
                 cmax=100,
@@ -317,10 +285,10 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
                     tickfont=dict(size=14),
                     thickness=25,
                     len=0.6,
-                    x=1.02,          # push colorbar slightly to the right
+                    x=1.02,
                     xanchor="left",
                 ),
-                coloraxis="coloraxis"  # reference the shared coloraxis
+                coloraxis="coloraxis"
             ),
             text=producers_colored["custom_text"],
             textposition="top center",
@@ -330,7 +298,6 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
         )
     )
 
-    # 8b) Producers WITHOUT oil (shut-in) → black markers
     fig.add_trace(
         go.Scatter(
             x=producers_na["xcord"],
@@ -345,7 +312,6 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
         )
     )
 
-    # 8c) WIs → orange markers
     fig.add_trace(
         go.Scatter(
             x=wis["xcord"],
@@ -360,7 +326,6 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
         )
     )
 
-    # 9) Compute dynamic padding for the axis ranges
     x_min, x_max = merged["xcord"].min(), merged["xcord"].max()
     y_min, y_max = merged["ycord"].min(), merged["ycord"].max()
     x_range = x_max - x_min if (x_max - x_min) != 0 else 1
@@ -368,7 +333,6 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
     x_pad = x_range * 0.1
     y_pad = y_range * 0.1
 
-    # 10) Set up the overall layout, including the shared coloraxis:
     fig.update_layout(
         title=dict(
             text="Bubble Map – WC Gradient | Black = Shut-in Wells",
@@ -419,10 +383,9 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
         ),
         width=1800,
         height=1000,
-        dragmode="pan",  # default to pan so users aren't forced to zoom
+        dragmode="pan",
     )
 
-    # 11) Render the chart via plotly_events (larger size, no flicker)
     selected_points = plotly_events(
         fig,
         click_event=True,
@@ -431,16 +394,13 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
         override_height=1000
     )
 
-    # 12) Handle click: extract well_bore from customdata (fallback to coordinate match)
     if selected_points:
         first = selected_points[0]
         well_clicked = None
 
-        # First try: pull well_bore from customdata
         if "customdata" in first and first["customdata"]:
             well_clicked = first["customdata"][0]
         else:
-            # Fallback: match x,y against merged
             x_sel = first.get("x", None)
             y_sel = first.get("y", None)
             if x_sel is not None and y_sel is not None:
@@ -453,32 +413,22 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
                 else:
                     st.warning("No matching well_bore found for those coordinates.")
 
-        # If a well_bore was found, display its PDF
         if well_clicked:
+            st.session_state['well_clicked'] = well_clicked
             st.markdown("---")
             st.write(f"**You clicked on well:** {well_clicked}")
-            pdf_rows = all_files_df[all_files_df["well_bore"] == well_clicked]
-            if not pdf_rows.empty:
-                st.subheader(f"PDF Viewer for Clicked Well: {well_clicked}")
-                display_pdf([well_clicked], pdf_rows)
-            else:
-                st.info(f"No PDF found for well {well_clicked}.")
     else:
-        st.write("No well selected yet. Click any bubble above to view its PDF.")
+        st.write("No well selected yet. Click any bubble above to view its WBS and CPI files.")
 
 # --- Main App Logic ---
-st.title("Well File PDF Viewer & Bubble Map")
+st.title("Well File WBS & CPI Viewer with Bubble Map")
 
-# Get filtered results
 filtered_prod, all_files_df, filtered_files, header_df, company_selection, selected_well_bores = display_filters()
 
-# --- Bubble Map Section ---
-# Define a session state to track clicked well (for consistent PDF logic)
 if 'well_clicked' not in st.session_state:
     st.session_state['well_clicked'] = None
 
 if not filtered_prod.empty:
-    # Filter fields only after well_bore selection for consistency
     if selected_well_bores:
         filtered_prod = filtered_prod[filtered_prod['well_bore'].isin(selected_well_bores)]
     fields = filtered_prod['field'].dropna().unique()
@@ -491,7 +441,7 @@ if not filtered_prod.empty:
 else:
     st.info("No production data to display bubble map.")
 
-# --- Determine which well(s) to show PDF for ---
+# --- Determine which well(s) to show files for ---
 if st.session_state.get("well_clicked"):
     active_wells = [st.session_state['well_clicked']]
 elif selected_well_bores:
@@ -499,10 +449,12 @@ elif selected_well_bores:
 else:
     active_wells = []
 
-# --- Show PDFs for active well(s) ---
+# --- Show WBS and CPI files for active well(s) ---
 if active_wells:
     st.markdown("---")
-    st.subheader("PDF Viewer for Selected Well(s)")
-    display_pdf(active_wells, all_files_df)
+    st.subheader("WBS Viewer for Selected Well(s)")
+    display_file(active_wells, all_files_df, "WBS")
+    st.subheader("CPI Viewer for Selected Well(s)")
+    display_file(active_wells, all_files_df, "CPI")
 else:
-    st.info("Select a well or click a bubble to view its PDF(s).")
+    st.info("Select a well or click a bubble to view its WBS and CPI files.")
