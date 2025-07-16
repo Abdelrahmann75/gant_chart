@@ -424,6 +424,10 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
 st.title("Well File WBS & CPI Viewer with Bubble Map")
 
 filtered_prod, all_files_df, filtered_files, header_df, company_selection, selected_well_bores = display_filters()
+# Reset clicked well if it's no longer in selected well bores
+if 'well_clicked' in st.session_state:
+    if st.session_state['well_clicked'] not in selected_well_bores:
+        del st.session_state['well_clicked']
 
 if 'well_clicked' not in st.session_state:
     st.session_state['well_clicked'] = None
