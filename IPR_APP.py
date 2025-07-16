@@ -110,7 +110,7 @@ else:
             {"file": "dca.py", "title": "Decline Curve Analysis", "icon": "📉", "section": "Detailed Analysis"},
             {"file": "cases_trial.py", "title": "Production Profile", "icon": "📉", "section": "Detailed Analysis"},
             {"file": "bi_weekly.py", "title": "Bi Weekly Report", "icon": "📊", "section": "Detailed Analysis"},
-            {"file": "file_vis.py", "title": "Well CPI", "icon": "🔭", "section": "Well Data"},
+            {"file": "file_vis.py", "title": "Well Data (CPI & WBS)", "icon": "🔭", "section": "Well Data"},
             {"file": "app.py", "title": "Chat Bot", "icon": "📊", "section": "AI Assistant"}
         ]
 
