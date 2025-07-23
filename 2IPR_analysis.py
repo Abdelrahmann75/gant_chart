@@ -46,7 +46,7 @@ st.markdown(
 )
 
 # Function to load data from SQLite database with custom queries
-@st.cache_data
+@st.cache_resource
 def load_data(db_path, prod_query, dfl_query):
     try:
         conn = sqlite3.connect(db_path)
@@ -66,7 +66,7 @@ def load_data(db_path, prod_query, dfl_query):
         return pd.DataFrame(), pd.DataFrame()
 
 # Load Alamein data with its specific queries
-@st.cache_data
+@st.cache_resource
 def get_data_alam():
     
     db_path = Path(__file__).parent.parent / "data" / "alamein_db.sqlite3"
@@ -76,7 +76,7 @@ def get_data_alam():
     return load_data(db_path, prod_query, dfl_query)
 
 # Load Petrosila data with its specific queries
-@st.cache_data
+@st.cache_resource
 def get_data_silah():
     
     db_path = Path(__file__).parent.parent / "data" / "petrosila.db"
