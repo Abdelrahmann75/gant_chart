@@ -195,6 +195,33 @@ def display_file(well_list: list[str], files_df: pd.DataFrame, file_category: st
         
         # Add separator between wells
         st.divider()
+# --- Filtering Logic ---
+def apply_common_filters(df, selected_date_range, selected_fields, selected_zones, selected_types):
+    """
+    Apply date / field / zone / type filters to the base dataframe.
+    """
+    if selected_fields is None or len(selected_fields) == 0:
+        selected_fields = df['field'].dropna().unique()
+
+    if selected_zones is None or len(selected_zones) == 0:
+        selected_zones = df['zone'].dropna().unique()
+
+    if selected_types is None or len(selected_types) == 0:
+        if 'type' in df.columns:
+            selected_types = df['type'].dropna().unique()
+
+    filtered_df = df[
+        (df['date'] >= selected_date_range[0]) &
+        (df['date'] <= selected_date_range[1])
+    ]
+    filtered_df = filtered_df[filtered_df['field'].isin(selected_fields)]
+
+    if 'zone' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['zone'].isin(selected_zones)]
+    if 'type' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['type'].isin(selected_types)]
+
+    return filtered_df
 
 # --- UI Filters ---
 def display_filters():
