@@ -73,66 +73,128 @@ def load_well_files(db_path):
 
 def display_file(well_list: list[str], files_df: pd.DataFrame, file_category: str):
     """
-    For each well in well_list, look up its file path in files_df for the specified file_category
-    and show it via Google Docs Viewer (public access). Handles both WBS and CPI.
+    Fixed version - Auto-opens both WBS and CPI PDFs instantly
+    Smaller popup windows positioned below each other
     """
     pdf_base_url = "https://iprdashboard.blob.core.windows.net/pdf-excel/"
-
+    
     for well in well_list:
-        file_row = files_df[
+        st.write(f"### 📋 Well: **{well}**")
+        
+        # Get both WBS and CPI files for this well
+        wbs_file = files_df[
             (files_df['well_bore'] == well) &
             (files_df['file_type'].str.lower() == 'pdf') &
-            (files_df['file_category'].str.lower() == file_category.lower())
+            (files_df['file_category'].str.lower() == 'wbs')
         ]
-        if not file_row.empty:
-            filename = file_row.iloc[0]['file_path']
-            encoded_filename = quote(filename)
-
-            full_url = f"{pdf_base_url}{encoded_filename}"
-            viewer_url = f"https://docs.google.com/gview?url={full_url}&embedded=true"
-
-            st.write(f"**{well}** ‣ {file_category} ‣ {filename}")
-            st.write(f"Loading {file_category} PDF from: {viewer_url}")
-
-            html_code = f'''
-                <iframe 
-                    src="{viewer_url}" 
-                    width="100%" 
-                    height="1000px" 
-                    style="border:1px solid #ccc;">
-                </iframe>
-            '''
-            st.components.v1.html(html_code, height=1000)
+        
+        cpi_file = files_df[
+            (files_df['well_bore'] == well) &
+            (files_df['file_type'].str.lower() == 'pdf') &
+            (files_df['file_category'].str.lower() == 'cpi')
+        ]
+        
+        # Create unique ID for this well
+        safe_well = well.replace('-', '_').replace(' ', '_').replace('.', '_').replace('/', '_')
+        
+        # Prepare URLs and filenames
+        wbs_url = ""
+        cpi_url = ""
+        wbs_filename = "Not available"
+        cpi_filename = "Not available"
+        
+        if not wbs_file.empty:
+            wbs_filename = wbs_file.iloc[0]['file_path']
+            encoded_wbs = quote(wbs_filename)
+            wbs_url = f"{pdf_base_url}{encoded_wbs}"
+        
+        if not cpi_file.empty:
+            cpi_filename = cpi_file.iloc[0]['file_path']
+            encoded_cpi = quote(cpi_filename)
+            cpi_url = f"{pdf_base_url}{encoded_cpi}"
+        
+        # Show file status
+        col1, col2 = st.columns(2)
+        with col1:
+            if wbs_url:
+                st.success(f"✅ **WBS**: {wbs_filename}")
+            else:
+                st.error("❌ **WBS**: Not available")
+        
+        with col2:
+            if cpi_url:
+                st.success(f"✅ **CPI**: {cpi_filename}")
+            else:
+                st.error("❌ **CPI**: Not available")
+        
+        # Only show button if at least one PDF exists
+        if wbs_url or cpi_url:
+            # Create the button and JavaScript
+            button_html = f"""
+            <div style="text-align: center; margin: 20px 0;">
+                <button id="openBtn_{safe_well}" onclick="openPDFs_{safe_well}()" 
+                        style="
+                            padding: 15px 30px; 
+                            background: linear-gradient(45deg, #007bff, #0056b3); 
+                            color: white; 
+                            border: none; 
+                            border-radius: 8px; 
+                            cursor: pointer; 
+                            font-weight: bold;
+                            font-size: 16px;
+                            box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+                        ">
+                    🚀 Open PDFs for {well}
+                </button>
+            </div>
+            
+            <script>
+            function openPDFs_{safe_well}() {{
+                console.log('Opening PDFs for {well}');
+                
+                // Calculate window sizes - smaller for well sketches
+                var windowWidth = 700;
+                var windowHeight = 500;
+                var screenWidth = window.screen.width;
+                var screenHeight = window.screen.height;
+                
+                // Center horizontally, stack vertically
+                var leftPos = Math.max(0, (screenWidth - windowWidth) / 2);
+                var topPos1 = Math.max(0, (screenHeight - (windowHeight * 2 + 60)) / 2);
+                var topPos2 = topPos1 + windowHeight + 60;
+                
+                // Open WBS first
+                {f'var wbsWindow = window.open("{wbs_url}", "WBS_{safe_well}", "width=" + windowWidth + ",height=" + windowHeight + ",left=" + leftPos + ",top=" + topPos1 + ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");' if wbs_url else ''}
+                
+                // Open CPI after short delay
+                setTimeout(function() {{
+                    {f'var cpiWindow = window.open("{cpi_url}", "CPI_{safe_well}", "width=" + windowWidth + ",height=" + windowHeight + ",left=" + leftPos + ",top=" + topPos2 + ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");' if cpi_url else ''}
+                }}, 500);
+                
+                // Change button text
+                document.getElementById("openBtn_{safe_well}").innerHTML = "✅ PDFs Opened";
+                document.getElementById("openBtn_{safe_well}").style.background = "linear-gradient(45deg, #28a745, #20893a)";
+            }}
+            </script>
+            """
+            
+            st.components.v1.html(button_html, height=100)
+            
+            # Add direct links as backup
+            st.write("**Direct Links:**")
+            link_cols = st.columns(2)
+            with link_cols[0]:
+                if wbs_url:
+                    st.markdown(f"[🔗 WBS Direct Link]({wbs_url})")
+            with link_cols[1]:
+                if cpi_url:
+                    st.markdown(f"[🔗 CPI Direct Link]({cpi_url})")
+        
         else:
-            st.warning(f"No {file_category} PDF found for well **{well}**.")
-
-# --- Filtering Logic ---
-def apply_common_filters(df, selected_date_range, selected_fields, selected_zones, selected_types):
-    """
-    Apply date / field / zone / type filters to the base dataframe.
-    """
-    if selected_fields is None or len(selected_fields) == 0:
-        selected_fields = df['field'].dropna().unique()
-
-    if selected_zones is None or len(selected_zones) == 0:
-        selected_zones = df['zone'].dropna().unique()
-
-    if selected_types is None or len(selected_types) == 0:
-        if 'type' in df.columns:
-            selected_types = df['type'].dropna().unique()
-
-    filtered_df = df[
-        (df['date'] >= selected_date_range[0]) &
-        (df['date'] <= selected_date_range[1])
-    ]
-    filtered_df = filtered_df[filtered_df['field'].isin(selected_fields)]
-
-    if 'zone' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['zone'].isin(selected_zones)]
-    if 'type' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['type'].isin(selected_types)]
-
-    return filtered_df
+            st.warning(f"No PDF files found for well **{well}**")
+        
+        # Add separator between wells
+        st.divider()
 
 # --- UI Filters ---
 def display_filters():
