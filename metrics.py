@@ -201,92 +201,122 @@ if not filtered_prod.empty:
     with col4:
         st.markdown(f'<div class="metric-box"><h3>💧 Injection Volume</h3><h2>{display_total_injection:,.2f} {inj_unit}</h2></div>', unsafe_allow_html=True)
 
-    # --- Bar Chart 1: Production Analysis by Well Bore ---
-    prod_choice = st.radio("Select Production Type for Bar Chart", options=["Net Oil", "Gross Oil"], index=0)
+    # --- Chart Configuration Section ---
+    st.markdown("### 📊 Chart Configuration")
+    
+    # Add selection options for grouping and production type in a more compact layout
+    col_chart1, col_chart2, col_chart3 = st.columns([1, 1, 1])
+    with col_chart1:
+        group_by_option = st.selectbox("**Group Charts By:**", options=["Well Bore", "Field", "Zone"], index=0)
+    with col_chart2:
+        prod_choice = st.selectbox("**Production Type:**", options=["Net Oil", "Gross Oil"], index=0)
+    with col_chart3:
+        st.write("")  # Empty space for balance
+    
+    st.markdown("---")  # Separator line
+    # --- Enhanced Bar Chart 1: Production Analysis ---
+    st.subheader(f"📈 Production Analysis by {group_by_option}")
+    
     if prod_choice == "Net Oil":
         production_col = "net"
-        unit_base = "BOPD"
+        unit_base1 = "BOPD"
+        unit_base2 = "BO"
     else:
         production_col = "gross"
-        unit_base = "BF"
+        unit_base1 = "BFPD"
+        unit_base2 = "BF"
+        
 
-    # Group by well bore and zone
-    df_zone = filtered_prod.groupby(["well_bore", "zone"], as_index=False)[production_col].sum()
-    scale_bar = 1000000 if df_zone[production_col].max() >= 1000000 else 1
-    df_zone["production_display"] = df_zone[production_col] / scale_bar
+    # Determine grouping and coloring based on selection
+    if group_by_option == "Well Bore":
+        group_cols = ["well_bore", "zone"]
+        x_axis = "well_bore"
+        color_by = "zone"
+        x_label = "Well Bore"
+        color_label = "Zone"
+    elif group_by_option == "Field":
+        group_cols = ["field", "zone"]
+        x_axis = "field"
+        color_by = "zone"
+        x_label = "Field"
+        color_label = "Zone"
+    else:  # Zone
+        group_cols = ["zone", "field"]
+        x_axis = "zone"
+        color_by = "field"
+        x_label = "Zone"
+        color_label = "Field"
+
+    # Group by selected columns
+    df_grouped = filtered_prod.groupby(group_cols, as_index=False)[production_col].sum()
+    scale_bar = 1000000 if df_grouped[production_col].max() >= 1000000 else 1
+    df_grouped["production_display"] = df_grouped[production_col] / scale_bar
 
     # Remove rows with zero production
-    df_zone = df_zone[df_zone["production_display"] > 0]
+    df_grouped = df_grouped[df_grouped["production_display"] > 0]
 
-    # Order wells by total production
-    df_total = df_zone.groupby("well_bore", as_index=False)["production_display"].sum()
+    # Order by total production
+    df_total = df_grouped.groupby(x_axis, as_index=False)["production_display"].sum()
     df_total = df_total.sort_values("production_display", ascending=False)
-    well_order = df_total["well_bore"].tolist()
-    prod_label_bar = f"{prod_choice} ({'MM ' if scale_bar==1000000 else ''}{unit_base})"
+    order_list = df_total[x_axis].tolist()
+    prod_label_bar = f"{prod_choice} ({'MM ' if scale_bar==1000000 else ''}{unit_base2})"
 
     # Format display text based on scaling
     if scale_bar == 1:
-        df_zone["display_text"] = df_zone["production_display"].apply(lambda x: f'<b>{int(x)}</b>' if x != 0 else "")
+        df_grouped["display_text"] = df_grouped["production_display"].apply(lambda x: f'<b>{int(x)}</b>' if x != 0 else "")
     else:
-        df_zone["display_text"] = df_zone["production_display"].apply(lambda x: f'<b>{x:.2f}</b>' if x != 0 else "")
+        df_grouped["display_text"] = df_grouped["production_display"].apply(lambda x: f'<b>{x:.2f}</b>' if x != 0 else "")
 
+    # Create the bar chart
     fig_prod = px.bar(
-    df_zone, 
-    x="well_bore", 
-    y="production_display", 
-    color="zone",
-    text="display_text",
-    category_orders={"well_bore": well_order},
-    labels={"production_display": prod_label_bar, "well_bore": "Well Bore", "zone": "Zone"}
-)
-    fig_prod = px.bar(
-        df_zone, 
-        x="well_bore", 
+        df_grouped, 
+        x=x_axis, 
         y="production_display", 
-        color="zone",
+        color=color_by,
         text="display_text",
-        category_orders={"well_bore": well_order},
-        labels={"production_display": prod_label_bar, "well_bore": "Well Bore", "zone": "Zone"}
+        category_orders={x_axis: order_list},
+        labels={"production_display": prod_label_bar, x_axis: x_label, color_by: color_label}
     )
 
     fig_prod.update_traces(
         textposition='outside',
         textfont=dict(
-            family="Arial Black",  # Bold font family for labels
-            size=16,
+            family="Arial Black",
+            size=14,
             color="black"
         )
     )
 
     fig_prod.update_layout(
-        title=f"Total Production by Well Bore (Values in {prod_label_bar})",
-        xaxis_title="Well Bore",
+        title=f"{prod_choice} Production by {x_label} (Colored by {color_label})",
+        xaxis_title=x_label,
         yaxis_title=prod_label_bar,
         hovermode="closest",
-        legend_title="Zone",
+        legend_title=color_label,
         barmode="stack",
+        height=500,
         xaxis=dict(
             tickfont=dict(
-                family="Arial Black",  # Bold tick labels
-                size=16,
+                family="Arial Black",
+                size=12,
                 color="black"
             ),
             title_font=dict(
-                family="Arial Black",  # Bold x-axis title
-                size=16,
+                family="Arial Black",
+                size=14,
                 color="black"
             ),
-            tickangle=90
+            tickangle=45
         ),
         yaxis=dict(
             tickfont=dict(
-                family="Arial Black",  # Bold tick labels for y-axis
-                size=16,
+                family="Arial Black",
+                size=12,
                 color="black"
             ),
             title_font=dict(
-                family="Arial Black",  # Bold y-axis title
-                size=16,
+                family="Arial Black",
+                size=14,
                 color="black"
             )
         )
@@ -295,15 +325,20 @@ if not filtered_prod.empty:
     st.plotly_chart(fig_prod, use_container_width=True)
 
     
-    # --- Bar Chart 2: Injection Rate Analysis by Well Bore ---
-    df_inj = filtered_prod.groupby(["well_bore", "zone"], as_index=False)[["inj_rate"]].sum()
+    # --- Enhanced Bar Chart 2: Injection Rate Analysis (Using Same Grouping) ---
+    st.subheader(f"💧 Injection Analysis by {group_by_option}")
+    
+    # Use the same grouping logic as production chart
+    df_inj = filtered_prod.groupby(group_cols, as_index=False)[["inj_rate"]].sum()
     scale_inj_bar = 1000000 if df_inj["inj_rate"].max() >= 1000000 else 1
     df_inj["inj_display"] = df_inj["inj_rate"] / scale_inj_bar
     inj_label_bar = f"Injection Rate ({'MM ' if scale_inj_bar==1000000 else ''}BW)"
     df_inj = df_inj[df_inj["inj_display"] > 0]
-    df_inj_total = df_inj.groupby("well_bore", as_index=False)["inj_display"].sum()
+    
+    # Order by total injection using same x_axis
+    df_inj_total = df_inj.groupby(x_axis, as_index=False)["inj_display"].sum()
     df_inj_total = df_inj_total.sort_values("inj_display", ascending=False)
-    well_order_inj = df_inj_total["well_bore"].tolist()
+    inj_order_list = df_inj_total[x_axis].tolist()
     
     if scale_inj_bar == 1:
         df_inj["display_text"] = df_inj["inj_display"].apply(lambda x: f'<b>{int(x)}</b>' if x != 0 else "")
@@ -311,21 +346,55 @@ if not filtered_prod.empty:
         df_inj["display_text"] = df_inj["inj_display"].apply(lambda x: f'<b>{x:.2f}</b>' if x != 0 else "")
     
     fig_inj = px.bar(df_inj, 
-                     x="well_bore", 
+                     x=x_axis, 
                      y="inj_display", 
-                     color="zone",
+                     color=color_by,
                      text="display_text", 
-                     category_orders={"well_bore": well_order_inj},
-                     labels={"inj_display": inj_label_bar, "well_bore": "Well Bore", "zone": "Zone"})
-    fig_inj.update_traces(textposition='outside')
+                     category_orders={x_axis: inj_order_list},
+                     labels={"inj_display": inj_label_bar, x_axis: x_label, color_by: color_label})
+    
+    fig_inj.update_traces(
+        textposition='outside',
+        textfont=dict(
+            family="Arial Black",
+            size=14,
+            color="black"
+        )
+    )
+    
     fig_inj.update_layout(
-        title=f"Total Injection by Well Bore (Values in {inj_label_bar})",
-        xaxis_title="Well Bore",
+        title=f"Injection Rate by {x_label} (Colored by {color_label})",
+        xaxis_title=x_label,
         yaxis_title=inj_label_bar,
         hovermode="closest",
-        legend_title="Zone",
+        legend_title=color_label,
         barmode="stack",
-        xaxis=dict(tickfont=dict(family="Arial Black", size=12), tickangle=90)
+        height=500,
+        xaxis=dict(
+            tickfont=dict(
+                family="Arial Black", 
+                size=12,
+                color="black"
+            ),
+            title_font=dict(
+                family="Arial Black",
+                size=14,
+                color="black"
+            ),
+            tickangle=45
+        ),
+        yaxis=dict(
+            tickfont=dict(
+                family="Arial Black",
+                size=12,
+                color="black"
+            ),
+            title_font=dict(
+                family="Arial Black",
+                size=14,
+                color="black"
+            )
+        )
     )
     st.plotly_chart(fig_inj, use_container_width=True)
     

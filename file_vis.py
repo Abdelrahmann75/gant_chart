@@ -71,17 +71,16 @@ def load_well_files(db_path):
         st.warning(f"Could not load well_files_vis from {db_path}: {e}")
         return pd.DataFrame(columns=["well_bore", "file_path", "file_type", "file_category"])
 
-def display_file(well_list: list[str], files_df: pd.DataFrame, file_category: str):
+def display_file(well_list: list[str], files_df: pd.DataFrame):
     """
-    Fixed version - Auto-opens both WBS and CPI PDFs instantly
-    Smaller popup windows positioned below each other
+    Display three buttons (WBS, CPI, Well History) side by side for each well
     """
     pdf_base_url = "https://iprdashboard.blob.core.windows.net/pdf-excel/"
     
     for well in well_list:
         st.write(f"### 📋 Well: **{well}**")
         
-        # Get both WBS and CPI files for this well
+        # Get files for this well
         wbs_file = files_df[
             (files_df['well_bore'] == well) &
             (files_df['file_type'].str.lower() == 'pdf') &
@@ -94,14 +93,22 @@ def display_file(well_list: list[str], files_df: pd.DataFrame, file_category: st
             (files_df['file_category'].str.lower() == 'cpi')
         ]
         
+        history_file = files_df[
+            (files_df['well_bore'] == well) &
+            (files_df['file_type'].str.lower() == 'xlsx') &
+            (files_df['file_category'].str.lower() == 'well_history')
+        ]
+        
         # Create unique ID for this well
         safe_well = well.replace('-', '_').replace(' ', '_').replace('.', '_').replace('/', '_')
         
         # Prepare URLs and filenames
         wbs_url = ""
         cpi_url = ""
+        history_url = ""
         wbs_filename = "Not available"
         cpi_filename = "Not available"
+        history_filename = "Not available"
         
         if not wbs_file.empty:
             wbs_filename = wbs_file.iloc[0]['file_path']
@@ -112,9 +119,14 @@ def display_file(well_list: list[str], files_df: pd.DataFrame, file_category: st
             cpi_filename = cpi_file.iloc[0]['file_path']
             encoded_cpi = quote(cpi_filename)
             cpi_url = f"{pdf_base_url}{encoded_cpi}"
+            
+        if not history_file.empty:
+            history_filename = history_file.iloc[0]['file_path']
+            encoded_history = quote(history_filename)
+            history_url = f"{pdf_base_url}{encoded_history}"
         
-        # Show file status
-        col1, col2 = st.columns(2)
+        # Show file status in columns
+        col1, col2, col3 = st.columns(3)
         with col1:
             if wbs_url:
                 st.success(f"✅ **WBS**: {wbs_filename}")
@@ -126,75 +138,213 @@ def display_file(well_list: list[str], files_df: pd.DataFrame, file_category: st
                 st.success(f"✅ **CPI**: {cpi_filename}")
             else:
                 st.error("❌ **CPI**: Not available")
+                
+        with col3:
+            if history_url:
+                st.success(f"✅ **Well History**: {history_filename}")
+            else:
+                st.error("❌ **Well History**: Not available")
         
-        # Only show button if at least one PDF exists
-        if wbs_url or cpi_url:
-            # Create the button and JavaScript
-            button_html = f"""
-            <div style="text-align: center; margin: 20px 0;">
-                <button id="openBtn_{safe_well}" onclick="openPDFs_{safe_well}()" 
-                        style="
-                            padding: 15px 30px; 
-                            background: linear-gradient(45deg, #007bff, #0056b3); 
-                            color: white; 
-                            border: none; 
-                            border-radius: 8px; 
-                            cursor: pointer; 
-                            font-weight: bold;
-                            font-size: 16px;
-                            box-shadow: 0 3px 6px rgba(0,0,0,0.2);
-                        ">
-                    🚀 Open PDFs for {well}
-                </button>
-            </div>
+        # Create the three buttons side by side
+        button_html = f"""
+        <div style="display: flex; justify-content: center; gap: 20px; margin: 20px 0; flex-wrap: wrap;">
+            {f'''
+            <button id="wbsBtn_{safe_well}" onclick="openWBS_{safe_well}()" 
+                    style="
+                        padding: 15px 25px; 
+                        background: linear-gradient(45deg, #28a745, #20893a); 
+                        color: white; 
+                        border: none; 
+                        border-radius: 8px; 
+                        cursor: pointer; 
+                        font-weight: bold;
+                        font-size: 14px;
+                        box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+                        min-width: 150px;
+                    ">
+                📄 Open WBS
+            </button>
+            ''' if wbs_url else '''
+            <button style="
+                        padding: 15px 25px; 
+                        background: #6c757d; 
+                        color: white; 
+                        border: none; 
+                        border-radius: 8px; 
+                        font-weight: bold;
+                        font-size: 14px;
+                        min-width: 150px;
+                        cursor: not-allowed;
+                    " disabled>
+                📄 WBS N/A
+            </button>
+            '''}
             
-            <script>
-            function openPDFs_{safe_well}() {{
-                console.log('Opening PDFs for {well}');
-                
-                // Calculate window sizes - smaller for well sketches
-                var windowWidth = 700;
-                var windowHeight = 500;
-                var screenWidth = window.screen.width;
-                var screenHeight = window.screen.height;
-                
-                // Center horizontally, stack vertically
-                var leftPos = Math.max(0, (screenWidth - windowWidth) / 2);
-                var topPos1 = Math.max(0, (screenHeight - (windowHeight * 2 + 60)) / 2);
-                var topPos2 = topPos1 + windowHeight + 60;
-                
-                // Open WBS first
-                {f'var wbsWindow = window.open("{wbs_url}", "WBS_{safe_well}", "width=" + windowWidth + ",height=" + windowHeight + ",left=" + leftPos + ",top=" + topPos1 + ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");' if wbs_url else ''}
-                
-                // Open CPI after short delay
-                setTimeout(function() {{
-                    {f'var cpiWindow = window.open("{cpi_url}", "CPI_{safe_well}", "width=" + windowWidth + ",height=" + windowHeight + ",left=" + leftPos + ",top=" + topPos2 + ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");' if cpi_url else ''}
-                }}, 500);
-                
-                // Change button text
-                document.getElementById("openBtn_{safe_well}").innerHTML = "✅ PDFs Opened";
-                document.getElementById("openBtn_{safe_well}").style.background = "linear-gradient(45deg, #28a745, #20893a)";
-            }}
-            </script>
-            """
+            {f'''
+            <button id="cpiBtn_{safe_well}" onclick="openCPI_{safe_well}()" 
+                    style="
+                        padding: 15px 25px; 
+                        background: linear-gradient(45deg, #007bff, #0056b3); 
+                        color: white; 
+                        border: none; 
+                        border-radius: 8px; 
+                        cursor: pointer; 
+                        font-weight: bold;
+                        font-size: 14px;
+                        box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+                        min-width: 150px;
+                    ">
+                📊 Open CPI
+            </button>
+            ''' if cpi_url else '''
+            <button style="
+                        padding: 15px 25px; 
+                        background: #6c757d; 
+                        color: white; 
+                        border: none; 
+                        border-radius: 8px; 
+                        font-weight: bold;
+                        font-size: 14px;
+                        min-width: 150px;
+                        cursor: not-allowed;
+                    " disabled>
+                📊 CPI N/A
+            </button>
+            '''}
             
-            st.components.v1.html(button_html, height=100)
+            {f'''
+            <button id="historyBtn_{safe_well}" onclick="openHistory_{safe_well}()" 
+                    style="
+                        padding: 15px 25px; 
+                        background: linear-gradient(45deg, #ffc107, #e0a800); 
+                        color: black; 
+                        border: none; 
+                        border-radius: 8px; 
+                        cursor: pointer; 
+                        font-weight: bold;
+                        font-size: 14px;
+                        box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+                        min-width: 150px;
+                    ">
+                📈 Well History
+            </button>
+            ''' if history_url else '''
+            <button style="
+                        padding: 15px 25px; 
+                        background: #6c757d; 
+                        color: white; 
+                        border: none; 
+                        border-radius: 8px; 
+                        font-weight: bold;
+                        font-size: 14px;
+                        min-width: 150px;
+                        cursor: not-allowed;
+                    " disabled>
+                📈 History N/A
+            </button>
+            '''}
+        </div>
+        
+        <script>
+        function openWBS_{safe_well}() {{
+            console.log('Opening WBS for {well}');
+            var windowWidth = 700;
+            var windowHeight = 500;
+            var screenWidth = window.screen.width;
+            var screenHeight = window.screen.height;
+            var leftPos = Math.max(0, (screenWidth - windowWidth) / 2);
+            var topPos = Math.max(0, (screenHeight - windowHeight) / 2);
             
-            # Add direct links as backup
+            var wbsWindow = window.open("{wbs_url}", "WBS_{safe_well}", 
+                "width=" + windowWidth + ",height=" + windowHeight + 
+                ",left=" + leftPos + ",top=" + topPos + 
+                ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");
+            
+            document.getElementById("wbsBtn_{safe_well}").innerHTML = "✅ WBS Opened";
+        }}
+        
+        function openCPI_{safe_well}() {{
+            console.log('Opening CPI for {well}');
+            var windowWidth = 700;
+            var windowHeight = 500;
+            var screenWidth = window.screen.width;
+            var screenHeight = window.screen.height;
+            var leftPos = Math.max(0, (screenWidth - windowWidth) / 2);
+            var topPos = Math.max(0, (screenHeight - windowHeight) / 2);
+            
+            var cpiWindow = window.open("{cpi_url}", "CPI_{safe_well}", 
+                "width=" + windowWidth + ",height=" + windowHeight + 
+                ",left=" + leftPos + ",top=" + topPos + 
+                ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");
+            
+            document.getElementById("cpiBtn_{safe_well}").innerHTML = "✅ CPI Opened";
+        }}
+        
+        function openHistory_{safe_well}() {{
+            console.log('Opening Well History for {well}');
+            var windowWidth = 1000;
+            var windowHeight = 700;
+            var screenWidth = window.screen.width;
+            var screenHeight = window.screen.height;
+            var leftPos = Math.max(0, (screenWidth - windowWidth) / 2);
+            var topPos = Math.max(0, (screenHeight - windowHeight) / 2);
+            
+            // Create iframe URL for Excel online viewer
+            var excelViewerUrl = "https://view.officeapps.live.com/op/embed.aspx?src=" + encodeURIComponent("{history_url}");
+            
+            // Create a new window with iframe content
+            var historyWindow = window.open("", "History_{safe_well}", 
+                "width=" + windowWidth + ",height=" + windowHeight + 
+                ",left=" + leftPos + ",top=" + topPos + 
+                ",scrollbars=yes,resizable=yes,toolbar=yes,menubar=no");
+            
+            // Write iframe content to the new window
+            historyWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Well History - {well}</title>
+                    <style>
+                        body {{ margin: 0; padding: 0; }}
+                        iframe {{ width: 100%; height: 100vh; border: none; }}
+                    </style>
+                </head>
+                <body>
+                    <iframe src="${{excelViewerUrl}}" 
+                            title="Well History - {well}"
+                            allowfullscreen>
+                        <p>Your browser doesn't support iframes. 
+                        <a href="{history_url}" target="_blank">Click here to download the file</a></p>
+                    </iframe>
+                </body>
+                </html>
+            `);
+            historyWindow.document.close();
+            
+            document.getElementById("historyBtn_{safe_well}").innerHTML = "✅ History Opened";
+        }}
+        </script>
+        """
+        
+        st.components.v1.html(button_html, height=120)
+        
+        # Add direct links as backup
+        if wbs_url or cpi_url or history_url:
             st.write("**Direct Links:**")
-            link_cols = st.columns(2)
+            link_cols = st.columns(3)
             with link_cols[0]:
                 if wbs_url:
                     st.markdown(f"[🔗 WBS Direct Link]({wbs_url})")
             with link_cols[1]:
                 if cpi_url:
                     st.markdown(f"[🔗 CPI Direct Link]({cpi_url})")
-        
-        else:
-            st.warning(f"No PDF files found for well **{well}**")
+            with link_cols[2]:
+                if history_url:
+                    st.markdown(f"[🔗 Well History Direct Link]({history_url})")
         
         # Add separator between wells
         st.divider()
+
 # --- Filtering Logic ---
 def apply_common_filters(df, selected_date_range, selected_fields, selected_zones, selected_types):
     """
@@ -237,7 +387,7 @@ def display_filters():
        - company_sel    : which DB was chosen
        - selected_wells : wells chosen in the multiselect
     """
-    db2 = Path(__file__).parent.parent / "data" / "alamein_db.sqlite3"
+    db2 =  Path(__file__).parent.parent / "data" / "alamein_db.sqlite3"
     db1 = Path(__file__).parent.parent / "data" / "petrosila.db"
     company_options = {"Petrosilah": db1, "Alamein": db2}
     h1, h2, h3 = st.columns([1, 1, 1])
@@ -507,12 +657,13 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
             st.markdown("---")
             st.write(f"**You clicked on well:** {well_clicked}")
     else:
-        st.write("No well selected yet. Click any bubble above to view its WBS and CPI files.")
+        st.write("No well selected yet. Click any bubble above to view its files.")
 
 # --- Main App Logic ---
-st.title("Well File WBS & CPI Viewer with Bubble Map")
+st.title("Well File Viewer - WBS, CPI & Well History")
 
 filtered_prod, all_files_df, filtered_files, header_df, company_selection, selected_well_bores = display_filters()
+
 # Reset clicked well if it's no longer in selected well bores
 if 'well_clicked' in st.session_state:
     if st.session_state['well_clicked'] not in selected_well_bores:
@@ -542,12 +693,10 @@ elif selected_well_bores:
 else:
     active_wells = []
 
-# --- Show WBS and CPI files for active well(s) ---
+# --- Show files for active well(s) ---
 if active_wells:
     st.markdown("---")
-    st.subheader("WBS Viewer for Selected Well(s)")
-    display_file(active_wells, all_files_df, "WBS")
-    st.subheader("CPI Viewer for Selected Well(s)")
-    display_file(active_wells, all_files_df, "CPI")
+    st.subheader("📁 Well Files Viewer")
+    display_file(active_wells, all_files_df)
 else:
-    st.info("Select a well or click a bubble to view its WBS and CPI files.")
+    st.info("Select a well or click a bubble to view its files (WBS, CPI, Well History).")
