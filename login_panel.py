@@ -4,12 +4,13 @@ import sqlite3
 from typing import Optional, Tuple
 from datetime import datetime, timedelta
 import secrets
+from pathlib import Path
 
 class AuthManager:
     """Handle user authentication and session management"""
     
     FIXED_PASSWORD = "ipr123"
-    DB_PATH = r"Y:\IPR_App\update\my_pages/trial.db"
+    DB_PATH = Path(__file__).parent / "my_pages" / "trial.db"
     SESSION_TIMEOUT_MINUTES = 90 # 8 hours - adjust as needed
     
     @staticmethod
