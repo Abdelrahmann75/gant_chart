@@ -249,7 +249,6 @@ else:
         }
 
         # Professional Modern CSS for section tabs
-            # Professional Modern CSS for section tabs
         st.markdown("""
         <style>
         /* Main container for section tabs */
@@ -336,8 +335,6 @@ else:
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
         }
 
-        
-
         /* ACTIVE button (primary) - Your custom blue #5DADE2 */
         div[data-testid="column"] .stButton button[kind="primary"] {
             background: linear-gradient(135deg, #5DADE2 0%, #4A9FD4 100%) !important;
@@ -349,9 +346,6 @@ else:
             transform: translateY(-3px) !important;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
         }
-
-        
-        
 
         /* Prevent color change on click/press */
         div[data-testid="column"] .stButton button[kind="primary"]:active {
@@ -473,8 +467,6 @@ else:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        
-
         # Create navigation for selected section
         selected_section = st.session_state.selected_section
         selected_pages = pages_config[selected_section]
@@ -482,13 +474,12 @@ else:
         # Build page objects
         page_objects = []
         for page in selected_pages:
-            file_path = page["path"] + page["file"]
+            file_path = page["path"] / page["file"]  # Fixed: Use / instead of +
             page_obj = st.Page(file_path, title=page["title"], icon=page["icon"])
             page_objects.append(page_obj)
 
         # Run navigation
         pg = st.navigation(page_objects)
         pg.run()
-
 
     main_app()
