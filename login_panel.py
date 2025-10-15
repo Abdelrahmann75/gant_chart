@@ -10,7 +10,7 @@ class AuthManager:
     """Handle user authentication and session management"""
     
     FIXED_PASSWORD = "ipr123"
-    DB_PATH = Path(__file__).parent / "my_pages" / "trial.db"
+    DB_PATH =  Path(__file__).parent.parent / "my_pages" / "trial.db"
     SESSION_TIMEOUT_MINUTES = 90 # 8 hours - adjust as needed
     
     @staticmethod
