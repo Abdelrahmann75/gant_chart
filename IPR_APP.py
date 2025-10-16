@@ -245,6 +245,10 @@ else:
             ],
             "🔭 Well Data": [
                 {"file": "file_vis.py", "title": "Well CPI", "icon": "🔭", "path": base_path}
+            ],
+            "🌟 Polaris Forecast Engine": [
+                {"file": "arps.py", "title": "Production Planner", "icon": "📈", "path": base_path},
+                {"file": "admin_panel.py", "title": "Control Center", "icon": "🖥️", "path": base_path}
             ]
         }
 
