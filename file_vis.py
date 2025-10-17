@@ -8,6 +8,20 @@ from streamlit_plotly_events import plotly_events
 from streamlit.components.v1 import html
 import plotly.graph_objects as go
 from urllib.parse import quote
+import numpy as np
+from datetime import datetime
+import datetime as dt
+from utils.login_panel import AuthManager
+
+# Import from arps utilities
+from utils.arps_classes_original import Config, DatabaseManager, ARPSModel, PlotManager
+
+
+
+#getting user ID
+if AuthManager.is_logged_in():
+        
+        user_id, username = AuthManager.get_current_user()
 
 # --- Custom CSS styling ---
 st.markdown("""
@@ -71,6 +85,245 @@ def load_well_files(db_path):
         st.warning(f"Could not load well_files_vis from {db_path}: {e}")
         return pd.DataFrame(columns=["well_bore", "file_path", "file_type", "file_category"])
 
+def get_unique_ids_for_wellbore(well_bore: str, company: str, dca_time: str = "monthly") -> list:
+    """
+    Get all unique_id(s) associated with a well_bore from production data
+    """
+    try:
+        if company == "Alamein":
+            conn = DatabaseManager.get_connection(Config.MAIN_DB_PATH)
+            if dca_time == "daily":
+                query = f"SELECT DISTINCT unique_id FROM st_data_plot WHERE well_bore = '{well_bore}'"
+            else:
+                query = f"SELECT DISTINCT unique_id FROM monthly_data WHERE well_bore = '{well_bore}'"
+        else:  # Petrosila
+            conn = DatabaseManager.get_connection(Config.PETROSILA_DB_PATH)
+            query = f"SELECT DISTINCT unique_id FROM st_data WHERE well_bore = '{well_bore}'"
+        
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        return df['unique_id'].dropna().unique().tolist()
+    except Exception as e:
+        st.warning(f"Error getting unique_ids for {well_bore}: {e}")
+        return []
+
+def load_forecast_cases_for_well(unique_ids: list) -> pd.DataFrame:
+    """
+    Load forecast cases where well_name matches any of the unique_ids
+    """
+    try:
+        cases_df = DatabaseManager.load_forecast_cases()
+        if cases_df.empty:
+            return pd.DataFrame()
+        
+        # Filter cases where well_name is in unique_ids list
+        filtered_cases = cases_df[cases_df['well_name'].isin(unique_ids)]
+        return filtered_cases
+    except Exception as e:
+        st.warning(f"Error loading forecast cases: {e}")
+        return pd.DataFrame()
+
+def display_production_analysis(well_bore: str, company: str):
+    """
+    Display production analysis chart for a selected well_bore
+    Similar to the existing wells analysis in arps.py
+    """
+    st.markdown("---")
+    st.subheader(f"Production Analysis: {well_bore}")
+    
+    # Determine resolution based on company
+    if company == "Petrosila":
+        dca_time = "daily"
+        unit_tag = "bbl/day"
+        st.info("Petrosila data - Daily resolution")
+    else:  # Alamein
+        resolution_option = st.radio(
+            "Select Resolution:",
+            options=["Monthly", "Daily"],
+            index=0,
+            key=f"resolution_{well_bore}",
+            horizontal=True
+        )
+        dca_time = "daily" if resolution_option == "Daily" else "monthly"
+        unit_tag = "bbl/day" if dca_time == "daily" else "bbl/month"
+    
+    # Get unique_id(s) for this well_bore
+    unique_ids = get_unique_ids_for_wellbore(well_bore, company, dca_time)
+    
+    if not unique_ids:
+        st.warning(f"No unique_id found for well_bore: {well_bore}")
+        return
+    
+    st.info(f"Found unique_id(s): {', '.join(unique_ids)}")
+    
+    # Load forecast cases for these unique_ids
+    cases_df = load_forecast_cases_for_well(unique_ids)
+    
+    if cases_df.empty:
+        st.info(f"âš ï¸ No forecast cases found for this well in the database. Create a case in the 'Existing Wells Analysis' tab first.")
+        return
+    
+    # Filter cases by dca_time if multiple resolutions exist
+    if 'dca_time' in cases_df.columns:
+        available_dca_times = cases_df['dca_time'].dropna().unique()
+        if dca_time in available_dca_times:
+            cases_df = cases_df[cases_df['dca_time'] == dca_time]
+        elif len(available_dca_times) > 0:
+            st.warning(f"âš ï¸ No cases found with {dca_time} resolution. Showing {available_dca_times[0]} instead.")
+            dca_time = available_dca_times[0]
+            unit_tag = "bbl/day" if dca_time == "daily" else "bbl/month"
+            cases_df = cases_df[cases_df['dca_time'] == dca_time]
+    
+    # Let user select a case
+    case_labels = cases_df['case_label'].unique().tolist()
+    
+    if len(case_labels) == 0:
+        st.warning("No valid cases available")
+        return
+    
+    selected_case = st.selectbox(
+        "Select Forecast Case:",
+        case_labels,
+        key=f"case_select_{well_bore}"
+    )
+    
+    # Get case data
+    case_data = cases_df[cases_df['case_label'] == selected_case].iloc[0]
+    
+    # Display case info
+    col_info1, col_info2, col_info3 = st.columns(3)
+    with col_info1:
+        st.metric("Case Label", case_data['case_label'])
+        st.metric("Well Name", case_data['well_name'])
+    with col_info2:
+        st.metric(f"Initial Rate (qi)", f"{case_data['qi']:.1f} {unit_tag}")
+        st.metric(f"Decline Rate (di)", f"{case_data['di']:.4f}")
+    with col_info3:
+        st.metric("Hyperbolic Factor (b)", f"{case_data['b']:.2f}")
+        st.metric("Effective Date", str(case_data['eff_date']))
+    
+    # Load production data for this unique_id
+    try:
+        unique_id = case_data['well_name']
+        df_prod = DatabaseManager.load_production_data_by_selection(
+            selection_type="well",
+            entity_identifier=unique_id,
+            company=company,
+            dca_time=dca_time
+        )
+        
+        if df_prod is None or df_prod.empty:
+            st.warning(f"No production data found for {unique_id}")
+            return
+        
+        # Convert date column
+        df_prod['date'] = pd.to_datetime(df_prod['date'])
+        
+        # Aggregate by date (sum if multiple entries per date)
+        plot_df = df_prod.groupby('date')['net'].sum().reset_index()
+        plot_df.columns = ['date', 'net']
+        
+        # Get case parameters
+        qi_forecast = float(case_data['qi'])
+        qi_regressed = float(case_data.get('qi_regressed', qi_forecast))
+        di = float(case_data['di'])
+        b = float(case_data['b'])
+        eff_date = pd.to_datetime(case_data['eff_date'])
+        ti_selected = pd.to_datetime(case_data.get('ti_selected', eff_date))
+        q_abandon = float(case_data.get('q_abandon', 10.0 if dca_time == 'daily' else 300.0))
+        end_of_lease = case_data.get('end_of_lease', dt.date(2039, 12, 31))
+        if isinstance(end_of_lease, str):
+            end_of_lease = pd.to_datetime(end_of_lease).date()
+        end_of_lease = pd.to_datetime(end_of_lease)
+        
+        # Create forecast profile
+        forecast_freq = "D" if dca_time == "daily" else "MS"
+        
+        forecast_profile = ARPSModel.create_production_profile(
+            start_date=eff_date,
+            end_date=end_of_lease,
+            qi=qi_forecast,
+            di=di,
+            b=b,
+            q_abandon=q_abandon,
+            frequency=forecast_freq
+        )
+        
+        # Create history match profile
+        history_end = eff_date - pd.Timedelta(days=1) if dca_time == 'daily' else eff_date - pd.DateOffset(months=1)
+        
+        history_profile = ARPSModel.create_production_profile(
+            start_date=ti_selected,
+            end_date=history_end,
+            qi=qi_regressed,
+            di=di,
+            b=b,
+            q_abandon=0,
+            frequency=forecast_freq
+        )
+        
+        # Prepare data for plotting
+        if not forecast_profile.empty:
+            rate_column = 'rate' if 'rate' in forecast_profile.columns else forecast_profile.columns[1]
+            forecast_plot = forecast_profile[[forecast_profile.columns[0], rate_column]].copy()
+            forecast_plot.columns = ['date', 'rate']
+        else:
+            forecast_plot = pd.DataFrame(columns=['date', 'rate'])
+        
+        if not history_profile.empty:
+            rate_column = 'rate' if 'rate' in history_profile.columns else history_profile.columns[1]
+            history_plot = history_profile[[history_profile.columns[0], rate_column]].copy()
+            history_plot.columns = ['date', 'rate']
+        else:
+            history_plot = None
+        
+        # Create combined plot
+        st.subheader(" Historical Production + ARPS Forecast")
+        
+        st.info("""
+        **Plot explanation:**
+        - ðŸŸ¢ **Green dots**: Historical production data
+        - ðŸ"´ **Red dots**: ARPS history match using regressed qi
+        - ðŸ"µ **Blue solid line**: Future forecast using forecast qi
+        """)
+        
+        fig_combined = PlotManager.create_combined_plot(
+            historical_df=plot_df,
+            forecast_profile=forecast_plot,
+            title=f"Production Analysis: {well_bore}",
+            unit=unit_tag,
+            history_match_df=history_plot
+        )
+        
+        st.plotly_chart(fig_combined, use_container_width=True, key=f"combined_plot_{well_bore}_{selected_case}")
+        
+        # Calculate EUR
+        st.subheader("EUR Summary")
+        
+        historical_cutoff = eff_date.date()
+        cutoff_timestamp = pd.Timestamp(historical_cutoff)
+        historical_cum = df_prod[df_prod['date'] < cutoff_timestamp]['net'].sum()
+        
+        if not forecast_profile.empty:
+            forecast_eur = ARPSModel.calculate_eur(forecast_profile, 0.0)
+            total_eur = ARPSModel.calculate_eur(forecast_profile, historical_cum)
+        else:
+            forecast_eur = 0.0
+            total_eur = historical_cum
+        
+        col_eur1, col_eur2, col_eur3 = st.columns(3)
+        with col_eur1:
+            st.metric("Historical Production", f"{historical_cum/1_000:.3f} Mstb")
+        with col_eur2:
+            st.metric("Forecast EUR", f"{forecast_eur/1_000:.3f} Mstb")
+        with col_eur3:
+            st.metric("**Total EUR**", f"{total_eur/1_000:.3f} Mstb")
+        
+    except Exception as e:
+        st.error(f"Error generating production analysis: {e}")
+        import traceback
+        st.code(traceback.format_exc())
+
 def display_file(well_list: list[str], files_df: pd.DataFrame):
     """
     Display three buttons (WBS, CPI, Well History) side by side for each well
@@ -78,7 +331,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
     pdf_base_url = "https://iprdashboard.blob.core.windows.net/pdf-excel/"
     
     for well in well_list:
-        st.write(f"### 📋 Well: **{well}**")
+        st.write(f"‹ Well: **{well}**")
         
         # Get files for this well
         wbs_file = files_df[
@@ -129,21 +382,21 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
         col1, col2, col3 = st.columns(3)
         with col1:
             if wbs_url:
-                st.success(f"✅ **WBS**: {wbs_filename}")
+                st.success(f"âœ… **WBS**: {wbs_filename}")
             else:
-                st.error("❌ **WBS**: Not available")
+                st.error("âŒ **WBS**: Not available")
         
         with col2:
             if cpi_url:
-                st.success(f"✅ **CPI**: {cpi_filename}")
+                st.success(f"âœ… **CPI**: {cpi_filename}")
             else:
-                st.error("❌ **CPI**: Not available")
+                st.error("âŒ **CPI**: Not available")
                 
         with col3:
             if history_url:
-                st.success(f"✅ **Well History**: {history_filename}")
+                st.success(f"âœ… **Well History**: {history_filename}")
             else:
-                st.error("❌ **Well History**: Not available")
+                st.error("âŒ **Well History**: Not available")
         
         # Create the three buttons side by side
         button_html = f"""
@@ -162,7 +415,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         box-shadow: 0 3px 6px rgba(0,0,0,0.2);
                         min-width: 150px;
                     ">
-                📄 Open WBS
+                ðŸ"„ Open WBS
             </button>
             ''' if wbs_url else '''
             <button style="
@@ -176,7 +429,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         min-width: 150px;
                         cursor: not-allowed;
                     " disabled>
-                📄 WBS N/A
+                ðŸ"„ WBS N/A
             </button>
             '''}
             
@@ -194,7 +447,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         box-shadow: 0 3px 6px rgba(0,0,0,0.2);
                         min-width: 150px;
                     ">
-                📊 Open CPI
+                ðŸ"Š Open CPI
             </button>
             ''' if cpi_url else '''
             <button style="
@@ -208,7 +461,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         min-width: 150px;
                         cursor: not-allowed;
                     " disabled>
-                📊 CPI N/A
+                ðŸ"Š CPI N/A
             </button>
             '''}
             
@@ -226,7 +479,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         box-shadow: 0 3px 6px rgba(0,0,0,0.2);
                         min-width: 150px;
                     ">
-                📈 Well History
+                ðŸ"ˆ Well History
             </button>
             ''' if history_url else '''
             <button style="
@@ -240,7 +493,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         min-width: 150px;
                         cursor: not-allowed;
                     " disabled>
-                📈 History N/A
+                ðŸ"ˆ History N/A
             </button>
             '''}
         </div>
@@ -260,7 +513,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                 ",left=" + leftPos + ",top=" + topPos + 
                 ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");
             
-            document.getElementById("wbsBtn_{safe_well}").innerHTML = "✅ WBS Opened";
+            document.getElementById("wbsBtn_{safe_well}").innerHTML = "âœ… WBS Opened";
         }}
         
         function openCPI_{safe_well}() {{
@@ -277,7 +530,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                 ",left=" + leftPos + ",top=" + topPos + 
                 ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");
             
-            document.getElementById("cpiBtn_{safe_well}").innerHTML = "✅ CPI Opened";
+            document.getElementById("cpiBtn_{safe_well}").innerHTML = "âœ… CPI Opened";
         }}
         
         function openHistory_{safe_well}() {{
@@ -321,7 +574,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
             `);
             historyWindow.document.close();
             
-            document.getElementById("historyBtn_{safe_well}").innerHTML = "✅ History Opened";
+            document.getElementById("historyBtn_{safe_well}").innerHTML = "âœ… History Opened";
         }}
         </script>
         """
@@ -334,13 +587,13 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
             link_cols = st.columns(3)
             with link_cols[0]:
                 if wbs_url:
-                    st.markdown(f"[🔗 WBS Direct Link]({wbs_url})")
+                    st.markdown(f"— WBS Direct Link]({wbs_url})")
             with link_cols[1]:
                 if cpi_url:
-                    st.markdown(f"[🔗 CPI Direct Link]({cpi_url})")
+                    st.markdown(f"— CPI Direct Link]({cpi_url})")
             with link_cols[2]:
                 if history_url:
-                    st.markdown(f"[🔗 Well History Direct Link]({history_url})")
+                    st.markdown(f"— Well History Direct Link]({history_url})")
         
         # Add separator between wells
         st.divider()
@@ -573,8 +826,10 @@ def display_bubble_map(header_df, vi_df, fields, date_range, all_files_df):
     y_pad = y_range * 0.1
 
     fig.update_layout(
+        
         title=dict(
-            text="Bubble Map – WC Gradient | Black = Shut-in Wells",
+
+            text="Bubble Map WC Gradient | Black = Shut-in Wells",
             x=0.5,
             xanchor="center",
             font=dict(size=20),
@@ -696,7 +951,13 @@ else:
 # --- Show files for active well(s) ---
 if active_wells:
     st.markdown("---")
-    st.subheader("📁 Well Files Viewer")
+    st.subheader(" Well Files Viewer")
     display_file(active_wells, all_files_df)
+    
+    # ===== NEW: Production Analysis Section =====
+    # Show production analysis for the first active well (or clicked well)
+    well_to_analyze = active_wells[0]
+    display_production_analysis(well_to_analyze, company_selection)
+    
 else:
     st.info("Select a well or click a bubble to view its files (WBS, CPI, Well History).")
