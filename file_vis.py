@@ -282,9 +282,9 @@ def display_production_analysis(well_bore: str, company: str):
         
         st.info("""
         **Plot explanation:**
-        - ðŸŸ¢ **Green dots**: Historical production data
-        - ðŸ"´ **Red dots**: ARPS history match using regressed qi
-        - ðŸ"µ **Blue solid line**: Future forecast using forecast qi
+        - **Green dots**: Historical production data
+        - **Red dots**: ARPS history match using regressed qi
+        -  **Blue solid line**: Future forecast using forecast qi
         """)
         
         fig_combined = PlotManager.create_combined_plot(
@@ -415,7 +415,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         box-shadow: 0 3px 6px rgba(0,0,0,0.2);
                         min-width: 150px;
                     ">
-                ðŸ"„ Open WBS
+                "„ Open WBS
             </button>
             ''' if wbs_url else '''
             <button style="
@@ -429,7 +429,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         min-width: 150px;
                         cursor: not-allowed;
                     " disabled>
-                ðŸ"„ WBS N/A
+                "„ WBS N/A
             </button>
             '''}
             
@@ -447,7 +447,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         box-shadow: 0 3px 6px rgba(0,0,0,0.2);
                         min-width: 150px;
                     ">
-                ðŸ"Š Open CPI
+                "Š Open CPI
             </button>
             ''' if cpi_url else '''
             <button style="
@@ -461,7 +461,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         min-width: 150px;
                         cursor: not-allowed;
                     " disabled>
-                ðŸ"Š CPI N/A
+                "Š CPI N/A
             </button>
             '''}
             
@@ -479,7 +479,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         box-shadow: 0 3px 6px rgba(0,0,0,0.2);
                         min-width: 150px;
                     ">
-                ðŸ"ˆ Well History
+                "ˆ Well History
             </button>
             ''' if history_url else '''
             <button style="
@@ -493,7 +493,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                         min-width: 150px;
                         cursor: not-allowed;
                     " disabled>
-                ðŸ"ˆ History N/A
+                "ˆ History N/A
             </button>
             '''}
         </div>
@@ -513,7 +513,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                 ",left=" + leftPos + ",top=" + topPos + 
                 ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");
             
-            document.getElementById("wbsBtn_{safe_well}").innerHTML = "âœ… WBS Opened";
+            document.getElementById("wbsBtn_{safe_well}").innerHTML = "WBS Opened";
         }}
         
         function openCPI_{safe_well}() {{
@@ -530,7 +530,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
                 ",left=" + leftPos + ",top=" + topPos + 
                 ",scrollbars=yes,resizable=yes,toolbar=no,menubar=no");
             
-            document.getElementById("cpiBtn_{safe_well}").innerHTML = "âœ… CPI Opened";
+            document.getElementById("cpiBtn_{safe_well}").innerHTML = "CPI Opened";
         }}
         
         function openHistory_{safe_well}() {{
@@ -574,7 +574,7 @@ def display_file(well_list: list[str], files_df: pd.DataFrame):
             `);
             historyWindow.document.close();
             
-            document.getElementById("historyBtn_{safe_well}").innerHTML = "âœ… History Opened";
+            document.getElementById("historyBtn_{safe_well}").innerHTML = "History Opened";
         }}
         </script>
         """
