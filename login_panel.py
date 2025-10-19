@@ -5,20 +5,61 @@ from typing import Optional, Tuple
 from datetime import datetime, timedelta
 import secrets
 from pathlib import Path
+import time
+from contextlib import contextmanager
 
 class AuthManager:
     """Handle user authentication and session management"""
     
     FIXED_PASSWORD = "ipr123"
-    DB_PATH =  Path(__file__).parent.parent / "my_pages" / "trial.db"
-    SESSION_TIMEOUT_MINUTES = 90 # 8 hours - adjust as needed
+    DB_PATH = Path(__file__).parent.parent / "my_pages" / "trial.db"
+    SESSION_TIMEOUT_MINUTES = 90  # 90 minutes
+    
+    # Connection settings to prevent locking
+    DB_TIMEOUT = 30.0  # Wait up to 30 seconds for lock
+    MAX_RETRIES = 3
+    RETRY_DELAY = 0.5  # seconds
     
     @staticmethod
+    @contextmanager
     def get_connection():
-        """Get database connection"""
-        return sqlite3.connect(AuthManager.DB_PATH)
+        """Get database connection with proper configuration"""
+        conn = None
+        try:
+            conn = sqlite3.connect(
+                str(AuthManager.DB_PATH),
+                timeout=AuthManager.DB_TIMEOUT,
+                isolation_level='DEFERRED',  # Less aggressive locking
+                check_same_thread=False
+            )
+            # Enable WAL mode for better concurrent access
+            conn.execute('PRAGMA journal_mode=WAL')
+            conn.execute('PRAGMA busy_timeout=30000')  # 30 seconds in milliseconds
+            yield conn
+        finally:
+            if conn:
+                conn.close()
     
-    
+    @staticmethod
+    def execute_with_retry(operation, *args, **kwargs):
+        """Execute database operation with retry logic"""
+        last_error = None
+        
+        for attempt in range(AuthManager.MAX_RETRIES):
+            try:
+                return operation(*args, **kwargs)
+            except sqlite3.OperationalError as e:
+                last_error = e
+                if "locked" in str(e).lower():
+                    if attempt < AuthManager.MAX_RETRIES - 1:
+                        time.sleep(AuthManager.RETRY_DELAY * (attempt + 1))  # Exponential backoff
+                        continue
+                raise
+            except Exception as e:
+                raise
+        
+        # If all retries failed
+        raise last_error
     
     @staticmethod
     def generate_session_token() -> str:
@@ -27,23 +68,25 @@ class AuthManager:
     
     @staticmethod
     def cleanup_expired_sessions():
-        """
-        Auto-logout sessions that have been inactive for too long
-        """
-        conn = AuthManager.get_connection()
+        """Auto-logout sessions that have been inactive for too long"""
+        def _cleanup():
+            with AuthManager.get_connection() as conn:
+                timeout_threshold = datetime.now() - timedelta(minutes=AuthManager.SESSION_TIMEOUT_MINUTES)
+                
+                conn.execute(
+                    """UPDATE login_history 
+                       SET logout_time = CURRENT_TIMESTAMP 
+                       WHERE logout_time IS NULL 
+                       AND last_activity < ?""",
+                    (timeout_threshold.isoformat(),)
+                )
+                conn.commit()
+        
         try:
-            timeout_threshold = datetime.now() - timedelta(minutes=AuthManager.SESSION_TIMEOUT_MINUTES)
-            
-            conn.execute(
-                """UPDATE login_history 
-                   SET logout_time = CURRENT_TIMESTAMP 
-                   WHERE logout_time IS NULL 
-                   AND last_activity < ?""",
-                (timeout_threshold.isoformat(),)
-            )
-            conn.commit()
-        finally:
-            conn.close()
+            AuthManager.execute_with_retry(_cleanup)
+        except Exception as e:
+            # Log but don't fail - cleanup is not critical
+            print(f"Session cleanup failed: {str(e)}")
     
     @staticmethod
     def update_activity(session_token: str):
@@ -51,17 +94,21 @@ class AuthManager:
         if not session_token:
             return
         
-        conn = AuthManager.get_connection()
+        def _update():
+            with AuthManager.get_connection() as conn:
+                conn.execute(
+                    """UPDATE login_history 
+                       SET last_activity = CURRENT_TIMESTAMP 
+                       WHERE session_token = ? AND logout_time IS NULL""",
+                    (session_token,)
+                )
+                conn.commit()
+        
         try:
-            conn.execute(
-                """UPDATE login_history 
-                   SET last_activity = CURRENT_TIMESTAMP 
-                   WHERE session_token = ? AND logout_time IS NULL""",
-                (session_token,)
-            )
-            conn.commit()
-        finally:
-            conn.close()
+            AuthManager.execute_with_retry(_update)
+        except Exception as e:
+            # Don't fail the app if activity update fails
+            print(f"Activity update failed: {str(e)}")
     
     @staticmethod
     def check_if_user_already_logged_in(user_id: int, username: str) -> Tuple[bool, str]:
@@ -69,40 +116,39 @@ class AuthManager:
         Check if user has active session (not expired)
         Returns: (is_already_logged_in: bool, message: str)
         """
-        # First cleanup expired sessions
-        AuthManager.cleanup_expired_sessions()
-        
-        conn = AuthManager.get_connection()
-        try:
-            cursor = conn.execute(
-                """SELECT login_id, login_time, last_activity
-                   FROM login_history 
-                   WHERE user_id = ? AND logout_time IS NULL
-                   ORDER BY login_time DESC
-                   LIMIT 1""",
-                (user_id,)
-            )
-            result = cursor.fetchone()
+        def _check():
+            # First cleanup expired sessions
+            AuthManager.cleanup_expired_sessions()
             
-            if result:
-                login_id, login_time, last_activity = result
+            with AuthManager.get_connection() as conn:
+                cursor = conn.execute(
+                    """SELECT login_id, login_time, last_activity
+                       FROM login_history 
+                       WHERE user_id = ? AND logout_time IS NULL
+                       ORDER BY login_time DESC
+                       LIMIT 1""",
+                    (user_id,)
+                )
+                result = cursor.fetchone()
                 
-                # Check if session is still active (within timeout)
-                last_act = datetime.fromisoformat(last_activity if last_activity else login_time)
-                now = datetime.now()
-                
-                if (now - last_act).total_seconds() < (AuthManager.SESSION_TIMEOUT_MINUTES * 60):
-                    # Session is still active
-                    try:
-                        time_str = last_act.strftime("%I:%M %p on %b %d, %Y")
-                    except:
-                        time_str = "recently"
+                if result:
+                    login_id, login_time, last_activity = result
                     
-                    return True, f"❌ User '{username}' is already logged in (last active: {time_str}). Please wait or logout from the other session."
-            
-            return False, ""
-        finally:
-            conn.close()
+                    # Check if session is still active (within timeout)
+                    last_act = datetime.fromisoformat(last_activity if last_activity else login_time)
+                    now = datetime.now()
+                    
+                    if (now - last_act).total_seconds() < (AuthManager.SESSION_TIMEOUT_MINUTES * 60):
+                        try:
+                            time_str = last_act.strftime("%I:%M %p on %b %d, %Y")
+                        except:
+                            time_str = "recently"
+                        
+                        return True, f"❌ User '{username}' is already logged in (last active: {time_str}). Please wait or logout from the other session."
+                
+                return False, ""
+        
+        return AuthManager.execute_with_retry(_check)
     
     @staticmethod
     def log_login(user_id: int) -> Tuple[int, str]:
@@ -112,17 +158,17 @@ class AuthManager:
         """
         session_token = AuthManager.generate_session_token()
         
-        conn = AuthManager.get_connection()
-        try:
-            cursor = conn.execute(
-                """INSERT INTO login_history (user_id, login_time, last_activity, session_token) 
-                   VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)""",
-                (user_id, session_token)
-            )
-            conn.commit()
-            return cursor.lastrowid, session_token
-        finally:
-            conn.close()
+        def _log():
+            with AuthManager.get_connection() as conn:
+                cursor = conn.execute(
+                    """INSERT INTO login_history (user_id, login_time, last_activity, session_token) 
+                       VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)""",
+                    (user_id, session_token)
+                )
+                conn.commit()
+                return cursor.lastrowid, session_token
+        
+        return AuthManager.execute_with_retry(_log)
     
     @staticmethod
     def log_logout(session_token: str):
@@ -130,17 +176,21 @@ class AuthManager:
         if not session_token:
             return
         
-        conn = AuthManager.get_connection()
+        def _logout():
+            with AuthManager.get_connection() as conn:
+                conn.execute(
+                    """UPDATE login_history 
+                       SET logout_time = CURRENT_TIMESTAMP 
+                       WHERE session_token = ? AND logout_time IS NULL""",
+                    (session_token,)
+                )
+                conn.commit()
+        
         try:
-            conn.execute(
-                """UPDATE login_history 
-                   SET logout_time = CURRENT_TIMESTAMP 
-                   WHERE session_token = ? AND logout_time IS NULL""",
-                (session_token,)
-            )
-            conn.commit()
-        finally:
-            conn.close()
+            AuthManager.execute_with_retry(_logout)
+        except Exception as e:
+            # Log but don't fail logout
+            print(f"Logout logging failed: {str(e)}")
     
     @staticmethod
     def verify_user(username: str, password: str) -> Tuple[bool, Optional[int], str]:
@@ -148,28 +198,28 @@ class AuthManager:
         if password != AuthManager.FIXED_PASSWORD:
             return False, None, "❌ Incorrect password"
         
-        conn = AuthManager.get_connection()
-        try:
-            cursor = conn.execute(
-                "SELECT user_id, user_name FROM users WHERE user_name = ?",
-                (username,)
-            )
-            result = cursor.fetchone()
-            
-            if result:
-                user_id, user_name = result
+        def _verify():
+            with AuthManager.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT user_id, user_name FROM users WHERE user_name = ?",
+                    (username,)
+                )
+                result = cursor.fetchone()
                 
-                # Check if user already logged in
-                is_logged_in, message = AuthManager.check_if_user_already_logged_in(user_id, user_name)
-                
-                if is_logged_in:
-                    return False, None, message
-                
-                return True, user_id, f"✅ Welcome back, {user_name}!"
-            else:
-                return False, None, "❌ Username not found. Please register first."
-        finally:
-            conn.close()
+                if result:
+                    user_id, user_name = result
+                    
+                    # Check if user already logged in
+                    is_logged_in, message = AuthManager.check_if_user_already_logged_in(user_id, user_name)
+                    
+                    if is_logged_in:
+                        return False, None, message
+                    
+                    return True, user_id, f"✅ Welcome back, {user_name}!"
+                else:
+                    return False, None, "❌ Username not found. Please register first."
+        
+        return AuthManager.execute_with_retry(_verify)
     
     @staticmethod
     def create_user(username: str, password: str) -> Tuple[bool, Optional[int], str]:
@@ -182,21 +232,22 @@ class AuthManager:
         
         username = username.strip()
         
-        conn = AuthManager.get_connection()
+        def _create():
+            with AuthManager.get_connection() as conn:
+                cursor = conn.execute(
+                    "INSERT INTO users (user_name) VALUES (?)",
+                    (username,)
+                )
+                conn.commit()
+                user_id = cursor.lastrowid
+                return True, user_id, f"✅ User '{username}' registered successfully!"
+        
         try:
-            cursor = conn.execute(
-                "INSERT INTO users (user_name) VALUES (?)",
-                (username,)
-            )
-            conn.commit()
-            user_id = cursor.lastrowid
-            return True, user_id, f"✅ User '{username}' registered successfully!"
+            return AuthManager.execute_with_retry(_create)
         except sqlite3.IntegrityError:
             return False, None, f"❌ Username '{username}' already exists."
         except Exception as e:
             return False, None, f"❌ Error: {str(e)}"
-        finally:
-            conn.close()
     
     @staticmethod
     def is_logged_in() -> bool:
