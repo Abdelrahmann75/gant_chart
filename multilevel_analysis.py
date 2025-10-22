@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 from datetime import datetime, timedelta
+from pathlib import Path
 
 # Enhanced CSS styling
 st.markdown(
@@ -138,16 +139,14 @@ def load_data_from_db(db_path, query):
 # Load Alamein data
 @st.cache_data
 def get_alamein_data():
-    csv_dir = r"Y:\IPR_App\update\my_pages\alamein"
-    db_path = os.path.join(csv_dir, 'alamein_db.sqlite3')
+ db_path = Path(__file__).parent.parent / "data" / "alamein_db.sqlite3"
     query = "SELECT * FROM st_data_plot"
     return load_data_from_db(db_path, query)
 
 # Load Petrosila data
 @st.cache_data
 def get_petrosila_data():
-    csv_dir = r"Y:\IPR_App\update"
-    db_path = os.path.join(csv_dir, 'petrosila.db')
+    db_path = Path(__file__).parent.parent / "data" / "petrosila.db"
     query = "SELECT * FROM st_data"
     return load_data_from_db(db_path, query)
 
