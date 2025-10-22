@@ -139,7 +139,7 @@ def load_data_from_db(db_path, query):
 # Load Alamein data
 @st.cache_data
 def get_alamein_data():
- db_path = Path(__file__).parent.parent / "data" / "alamein_db.sqlite3"
+    db_path = Path(__file__).parent.parent / "data" / "alamein_db.sqlite3"
     query = "SELECT * FROM st_data_plot"
     return load_data_from_db(db_path, query)
 
