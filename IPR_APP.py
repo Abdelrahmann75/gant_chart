@@ -238,6 +238,7 @@ else:
                 {"file": "app.py", "title": "Chat Bot", "icon": "💬", "path": llm_path}
             ],
             "📊 Production Dashboards": [
+                {"file": "multilevel_analysis.py", "title": "Production Hierarchy", "icon": "📈", "path": base_path},
                 {"file": "metrics.py", "title": "Production Metrics", "icon": "📈", "path": base_path},
                 {"file": "prod_differ.py", "title": "Production Differ", "icon": "📉", "path": base_path},
                 {"file": "2IPR_analysis.py", "title": "Production Plots", "icon": "📊", "path": base_path},
