@@ -150,7 +150,6 @@ def get_petrosila_data():
     query = "SELECT * FROM st_data"
     return load_data_from_db(db_path, query)
 
-# Color palette for charts
 COLOR_PALETTE = [
     '#667eea', '#764ba2', '#f093fb', '#4facfe', '#00f2fe',
     '#43e97b', '#fa709a', '#fee140', '#30cfd0', '#a8edea',
@@ -381,14 +380,44 @@ def main():
         else:
             default_end = today_date
         
-        # Date range slider
-        date_range = st.slider(
-            "📅 Date Range",
-            min_value=min_date_date,
-            max_value=max_date_date,
-            value=(default_start, default_end),
-            format="DD-MMM-YYYY"
+        # Date selection method
+        date_selection_method = st.radio(
+            "Select Date Input Method",
+            options=["Slider", "Manual Input"],
+            horizontal=True
         )
+        
+        if date_selection_method == "Slider":
+            # Date range slider
+            date_range = st.slider(
+                "📅 Date Range",
+                min_value=min_date_date,
+                max_value=max_date_date,
+                value=(default_start, default_end),
+                format="DD-MMM-YYYY"
+            )
+        else:
+            # Manual date input
+            col_start, col_end = st.columns(2)
+            with col_start:
+                start_date = st.date_input(
+                    "Start Date",
+                    value=default_start,
+                    min_value=min_date_date,
+                    max_value=max_date_date
+                )
+            with col_end:
+                end_date = st.date_input(
+                    "End Date",
+                    value=default_end,
+                    min_value=min_date_date,
+                    max_value=max_date_date
+                )
+            # Ensure end_date is not before start_date
+            if end_date < start_date:
+                st.error("End date cannot be before start date.")
+                return
+            date_range = (start_date, end_date)
         
         # Convert to pandas Timestamps for filtering
         date_range = (pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1]))
@@ -525,7 +554,11 @@ def main():
         st.metric("Average Water Cut", f"{avg_wc:.1f}%")
     
     with col4:
-        num_unique_ids = df_date_filtered['unique_id'].nunique()
+        # ✅ Filter the DataFrame for net_oil > 0
+        df_positive = df_date_filtered[df_date_filtered['net'] > 0]
+
+        # ✅ Count unique wells (unique_id) after filtering
+        num_unique_ids = df_positive['unique_id'].nunique()
         st.metric("Active Well Zones", f"{num_unique_ids}")
     
     st.markdown("</div>", unsafe_allow_html=True)
