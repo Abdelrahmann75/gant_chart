@@ -8,13 +8,6 @@ import numpy as np
 import os
 from datetime import datetime, timedelta
 
-# Page configuration
-st.set_page_config(
-    page_title="Well Production Analysis",
-    page_icon="🛢️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
 
 # Custom CSS
 st.markdown("""
@@ -1016,5 +1009,5 @@ def main():
                 mime="text/csv"
             )
 
-if __name__ == "__main__":
-    main()
+
+main()
