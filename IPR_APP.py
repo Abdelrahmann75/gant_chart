@@ -243,9 +243,12 @@ else:
                 {"file": "prod_differ.py", "title": "Production Differ", "icon": "📉", "path": base_path},
                 {"file": "2IPR_analysis.py", "title": "Production Plots", "icon": "📊", "path": base_path},
                 {"file": "bi_weekly.py", "title": "Bi Weekly Report", "icon": "📋", "path": base_path}
+                
+
             ],
             "🔭 Well Data": [
-                {"file": "file_vis.py", "title": "Well CPI", "icon": "🔭", "path": base_path}
+                {"file": "file_vis.py", "title": "Well CPI", "icon": "🔭", "path": base_path},
+                {"file": "wc_cont.py", "title": "Bubble Maps & Static Pressure", "icon": "📍", "path": base_path}
             ],
             "🌟 Polaris Forecast Engine": [
                 {"file": "arps.py", "title": "Production Planner", "icon": "📈", "path": base_path},
