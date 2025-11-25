@@ -7,6 +7,7 @@ from scipy.interpolate import griddata
 import numpy as np
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 
 
 # Custom CSS
@@ -187,8 +188,8 @@ def convert_coordinates_to_numeric(df):
 # Load Alamein production data
 @st.cache_data
 def get_data_alam_single():
-    csv_dir = r"Y:\IPR_App\update\my_pages\alamein"
-    db_path = os.path.join(csv_dir, 'alamein_db.sqlite3')
+    db_path = Path(__file__).parent.parent / "data" / "alamein_db.sqlite3"
+    
     query_alam = "SELECT * FROM st_data"
     df = load_data(db_path, query_alam)
     return convert_coordinates_to_numeric(df)
@@ -196,8 +197,7 @@ def get_data_alam_single():
 # Load Alamein header data
 @st.cache_data
 def get_header_alam():
-    csv_dir = r"Y:\IPR_App\update\my_pages\alamein"
-    db_path = os.path.join(csv_dir, 'alamein_db.sqlite3')
+    db_path = Path(__file__).parent.parent / "data" / "petrosila.db"
     query = """SELECT unique_id, well_bore, zone, alias, field, 
                       xcord, ycord, type FROM header_id"""
     df = load_data(db_path, query)
