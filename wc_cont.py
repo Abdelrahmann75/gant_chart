@@ -197,7 +197,7 @@ def get_data_alam_single():
 # Load Alamein header data
 @st.cache_data
 def get_header_alam():
-    db_path = Path(__file__).parent.parent / "data" / "petrosila.db"
+    db_path = Path(__file__).parent.parent / "data" / "alamein_db.sqlite3"
     query = """SELECT unique_id, well_bore, zone, alias, field, 
                       xcord, ycord, type FROM header_id"""
     df = load_data(db_path, query)
@@ -206,8 +206,8 @@ def get_header_alam():
 # Load Petrosilah production data
 @st.cache_data
 def get_data_silah_single():
-    csv_dir = r"Y:\IPR_App\update"
-    db_path = os.path.join(csv_dir, 'petrosila.db')
+    
+    db_path = Path(__file__).parent.parent / "data" / "petrosila.db"
     query_silah = "SELECT * FROM st_data"
     df = load_data(db_path, query_silah)
     return convert_coordinates_to_numeric(df)
@@ -215,8 +215,8 @@ def get_data_silah_single():
 # Load Petrosilah header data
 @st.cache_data
 def get_header_silah():
-    csv_dir = r"Y:\IPR_App\update"
-    db_path = os.path.join(csv_dir, 'petrosila.db')
+    
+    db_path = Path(__file__).parent.parent / "data" / "petrosila.db"
     query = """SELECT well_zone as unique_id, well_bore, zone, alias, 
                       field, xcord, ycord, type FROM header_id"""
     df = load_data(db_path, query)
@@ -225,8 +225,8 @@ def get_header_silah():
 # Load Petrosilah reservoir pressure data
 @st.cache_data
 def get_pressure_data_silah():
-    csv_dir = r"Y:\IPR_App\update"
-    db_path = os.path.join(csv_dir, 'petrosila.db')
+    
+    db_path = Path(__file__).parent.parent / "data" / "petrosila.db"
     query = """SELECT 
         rd.well_zone,
         rd.date,
